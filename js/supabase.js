@@ -104,6 +104,19 @@ const CloudSync = {
       if (studentsData.length > 0) await dbStorage.storeMeta('studentsUpdatedAt', now);
       if (tasksData.length > 0)    await dbStorage.storeMeta('tasksUpdatedAt', now);
 
+      // 7. 推送学生统计数据（供冲突检测弹窗展示）
+      if (studentsData.length > 0) {
+        const realStudents = studentsData.filter(s => !s._isPlaceholder);
+        const scores = realStudents.map(s => s.points || 0);
+        const scoreAvg = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+        const scoreMax = scores.length > 0 ? Math.max(...scores) : 0;
+        const stats = { count: realStudents.length, scoreAvg, scoreMax, timestamp: now };
+        await sb.from('sync_meta').upsert(
+          { key: 'student_stats', value: JSON.stringify(stats) },
+          { onConflict: 'key' }
+        ).catch(() => {}); // 统计信息上传失败不影响主流程
+      }
+
       console.log('[CloudSync] 上传成功', { students: studentsData.length, tasks: tasksData.length, avatars: avatarCount });
       return {
         success: true,
@@ -179,22 +192,47 @@ const CloudSync = {
           const cloudTimes = await this.getCloudLastUpdateTime();
           
           if (cloudTimes) {
-            // 学生数据：云端有新数据才拉取
+            // ===== 学生数据 ====
             if (localStudentsTime && cloudTimes.students) {
+              // 两者都有时间戳：云端有新数据才拉取
               const localTime = new Date(localStudentsTime);
               if (cloudTimes.students <= localTime) {
                 studentsUpdated = false;
                 console.log('[CloudSync] 学生数据未更新，跳过（本地:', localStudentsTime, '≥ 云端:', cloudTimes.students.toISOString(), ')');
               }
+            } else if (!localStudentsTime && cloudTimes.students) {
+              // 本地时间戳未初始化：检查本地是否有真实数据
+              // 有真实数据 → 保护本地，不拉取（防止云端旧数据覆盖）
+              const localStudents = await dbStorage.getStudents();
+              const hasRealData = localStudents.some(s => !s._isPlaceholder);
+              if (hasRealData) {
+                studentsUpdated = false;
+                console.log('[CloudSync] ⚠️ 本地有真实学生数据但时间戳未初始化，跳过拉取（保护本地数据）');
+              } else {
+                console.log('[CloudSync] 本地无真实数据（仅有占位），允许从云端拉取');
+              }
+            } else if (localStudentsTime && !cloudTimes.students) {
+              // 云端没有学生数据，无需拉取
+              studentsUpdated = false;
+              console.log('[CloudSync] 云端无学生数据，跳过拉取');
             }
+            // localStudentsTime 和 cloudTimes.students 均为 null → studentsUpdated 保持 true（但云端无数据，实际为空操作）
             
-            // 任务数据：云端有新数据才拉取
+            // ===== 任务数据（同上逻辑）====
             if (localTasksTime && cloudTimes.tasks) {
               const localTime = new Date(localTasksTime);
               if (cloudTimes.tasks <= localTime) {
                 tasksUpdated = false;
                 console.log('[CloudSync] 任务数据未更新，跳过（本地:', localTasksTime, '≥ 云端:', cloudTimes.tasks.toISOString(), ')');
               }
+            } else if (!localTasksTime && cloudTimes.tasks) {
+              const localTasks = await dbStorage.getTasks();
+              if (localTasks.length > 0) {
+                tasksUpdated = false;
+                console.log('[CloudSync] ⚠️ 本地有任务数据但时间戳未初始化，跳过低取（保护本地数据）');
+              }
+            } else if (localTasksTime && !cloudTimes.tasks) {
+              tasksUpdated = false;
             }
             
             // 两种数据都没更新 -> 整体跳过
@@ -269,9 +307,19 @@ const CloudSync = {
         console.warn('[CloudSync] 头像数据拉取失败（忽略）:', e.message);
       }
 
-      // 4. 写入本地 IndexedDB（由 storeStudents/storeTasks 自动更新本地时间戳）
-      await dbStorage.storeStudents(studentsData);
-      await dbStorage.storeTasks(tasksData);
+      // 4. 写入本地 IndexedDB
+      // 仅在实际有数据变更时才写入（防止无变更时误更新时间戳）
+      const studentsDataChanged = studentsUpdated || avatarCount > 0;
+      const tasksDataChanged = tasksUpdated;
+      
+      if (studentsDataChanged) {
+        await dbStorage.storeStudents(studentsData);
+        await dbStorage.storeMeta('studentsUpdatedAt', new Date().toISOString());
+      }
+      if (tasksDataChanged) {
+        await dbStorage.storeTasks(tasksData);
+        await dbStorage.storeMeta('tasksUpdatedAt', new Date().toISOString());
+      }
 
       // 5. 更新 Store 内存状态
       Store.state.students.splice(0, Store.state.students.length, ...studentsData);
@@ -331,6 +379,23 @@ const CloudSync = {
         students: sCount.count || 0,
         tasks: tCount.count || 0,
       };
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // ---- 获取云端学生统计（供冲突检测弹窗使用）----
+  async getCloudStudentStats() {
+    try {
+      const sb = getSupabase();
+      if (!sb) return null;
+      const { data, error } = await sb
+        .from('sync_meta')
+        .select('value')
+        .eq('key', 'student_stats')
+        .single();
+      if (error || !data) return null;
+      return JSON.parse(data.value);
     } catch (e) {
       return null;
     }

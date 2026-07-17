@@ -1068,7 +1068,14 @@ const AdminCloud = {
       cloudStats: null,
       localStats: { students: 0, tasks: 0 },
       confirmOverwrite: false, // 拉取前确认覆盖
-      forcePull: false,        // 强制拉取（忽略时间检测）
+      overwriteLocal: false,   // 是否强制覆盖本地（默认开启时间保护）
+
+      // 智能同步（冲突检测）
+      syncChecking: false,       // 正在检测冲突
+      showSyncDialog: false,     // 显示冲突对比弹窗
+      cloudSyncStats: null,      // 云端统计
+      localSyncStats: null,      // 本地统计
+      syncDialogResolving: false, // 正在处理用户选择
       autoSyncEnabled: false,
       // 头像专项操作
       avatarPushing: false,
@@ -1091,6 +1098,11 @@ const AdminCloud = {
     this.localStats.students = Store.state.students.length;
     this.localStats.tasks = Store.state.tasks.length;
     this.localAvatarCount = Store.state.students.filter(s => s.avatar || s.petImage).length;
+
+    // 检查加载时自动检测到的冲突
+    if (Store.state._syncConflict) {
+      this._showAutoDetectedConflict();
+    }
   },
   beforeUnmount() {
     if (this._unwatchStudents) this._unwatchStudents();
@@ -1149,10 +1161,10 @@ const AdminCloud = {
     async doPull() {
       this.pulling = true;
       this.confirmOverwrite = false;
-      // forcePull=false → 传 true（强制）；forcePull=true → 传 false（启用时间保护）
-      const result = await Store.cloudPull(!this.forcePull);
+      // overwriteLocal=true → force（强制覆盖）；false → 时间保护（默认）
+      const result = await Store.cloudPull(this.overwriteLocal);
       this.pulling = false;
-      this.forcePull = false; // 重置
+      this.overwriteLocal = false; // 重置
       if (result.success) {
         if (result.skipped) {
           // 数据已是最新，不需要覆盖，静默提示
@@ -1172,6 +1184,109 @@ const AdminCloud = {
           } catch (e) {}
         }
       }
+    },
+
+    // ---- 智能同步：检测云端本地时间，一致则静默推送，不一致则弹窗对比 ----
+    async checkAndSync() {
+      this.syncChecking = true;
+      try {
+        // 1. 获取云端统计和时间
+        const cloudStats = await CloudSync.getCloudStudentStats();
+        const cloudTimes = await CloudSync.getCloudLastUpdateTime();
+
+        // 2. 获取本地时间戳
+        const localTime = await dbStorage.getMeta('studentsUpdatedAt');
+
+        // 3. 计算本地统计
+        const realStudents = Store.state.students.filter(s => !s._isPlaceholder);
+        const scores = realStudents.map(s => s.points || 0);
+        const localStats = {
+          count: realStudents.length,
+          scoreAvg: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0,
+          scoreMax: scores.length ? Math.max(...scores) : 0,
+          lastUpdateTime: localTime,
+        };
+
+        // 4. 严格比较时间戳（2秒以内视为一致）
+        const cloudTime = cloudTimes ? cloudTimes.students : null;
+        let isSame = false;
+        if (cloudTime && localTime) {
+          isSame = Math.abs(new Date(cloudTime).getTime() - new Date(localTime).getTime()) <= 2000;
+        }
+
+        console.log('[Sync] 时间对比', {
+          cloud: cloudTime ? cloudTime.toISOString() : '无',
+          local: localTime || '无',
+          same: isSame
+        });
+
+        if (isSame) {
+          // 时间一致 → 静默推送
+          Store.toast('✅ 数据同步中，云端与本地一致，正在推送...', 'success');
+          await this.doPush();
+        } else {
+          // 时间不一致 → 弹窗对比
+          this.cloudSyncStats = cloudStats || {
+            count: '?', scoreAvg: '?', scoreMax: '?',
+            lastUpdateTime: cloudTime ? cloudTime.toISOString() : null,
+          };
+          this.cloudSyncStats.lastUpdateTime = cloudTime ? cloudTime.toISOString() : null;
+          this.localSyncStats = localStats;
+          this.showSyncDialog = true;
+        }
+      } catch (e) {
+        Store.toast('❌ 同步检测失败: ' + (e.message || '未知错误'), 'error');
+        console.error('[Sync] 检测失败:', e);
+      }
+      this.syncChecking = false;
+    },
+
+    async resolveConflict(choice) {
+      this.syncDialogResolving = true;
+      this.showSyncDialog = false;
+      try {
+        if (choice === 'local') {
+          // 保留本地 → 推送到云端
+          await this.doPush();
+        } else {
+          // 使用云端 → 强制拉取
+          const result = await Store.cloudPull(true); // force=true
+          if (result.success && !result.skipped) {
+            await this.refreshStats();
+          }
+        }
+      } catch (e) {
+        Store.toast('❌ 操作失败: ' + (e.message || '未知错误'), 'error');
+      }
+      this.syncDialogResolving = false;
+    },
+
+    // ---- 加载时自动检测到冲突，弹出对比窗口 ----
+    async _showAutoDetectedConflict() {
+      // 清除标志（防止重复弹出）
+      Store.state._syncConflict = false;
+      
+      // 加载云端统计
+      const cloudStats = await CloudSync.getCloudStudentStats();
+      
+      // 计算本地统计
+      const realStudents = Store.state.students.filter(s => !s._isPlaceholder);
+      const scores = realStudents.map(s => s.points || 0);
+      
+      this.cloudSyncStats = cloudStats || {
+        count: '?', scoreAvg: '?', scoreMax: '?',
+        lastUpdateTime: Store.state._syncConflictCloudTime,
+      };
+      this.cloudSyncStats.lastUpdateTime = Store.state._syncConflictCloudTime;
+      
+      this.localSyncStats = {
+        count: realStudents.length,
+        scoreAvg: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0,
+        scoreMax: scores.length ? Math.max(...scores) : 0,
+        lastUpdateTime: Store.state._syncConflictLocalTime,
+      };
+      
+      this.showSyncDialog = true;
     },
 
     formatTime(isoStr) {
@@ -1269,12 +1384,12 @@ const AdminCloud = {
           <!-- 拉取云端数据 -->
           <div style="display:flex;align-items:center;gap:12px;">
             <div style="flex:1;">
-              <div style="font-size:14px;font-weight:700;">📥 从云端拉取</div>
-              <div style="font-size:12px;color:var(--text-light);margin-top:2px;">默认自动对比时间，仅拉取云端更新的数据</div>
+              <div style="font-size:14px;font-weight:700;">🔁 智能同步</div>
+              <div style="font-size:12px;color:var(--text-light);margin-top:2px;">自动检测冲突：一致则静默推送，不一致则弹窗对比</div>
             </div>
-            <button class="btn" style="min-width:120px;flex-shrink:0;background:#E65100;color:white;border:none;"
-                    :disabled="pulling || !connectionStatus?.ok" @click="openPullConfirm">
-              {{ pulling ? '🔄 下载中...' : '📥 下载' }}
+            <button class="btn btn-primary" style="min-width:130px;flex-shrink:0;"
+                    :disabled="syncChecking || !connectionStatus?.ok" @click="checkAndSync">
+              {{ syncChecking ? '🔄 检测中...' : '🔁 智能同步' }}
             </button>
           </div>
         </div>
@@ -1392,39 +1507,78 @@ CREATE POLICY "allow_all_sync" ON sync_meta FOR ALL USING (true) WITH CHECK (tru
         </div>
       </div>
 
-      <!-- ⚠️ 拉取确认弹窗 -->
-      <div v-if="confirmOverwrite" class="modal-overlay" @click.self="confirmOverwrite=false">
-        <div class="modal-box" style="text-align:center;">
-          <div style="font-size:56px;margin-bottom:12px;">⚠️</div>
-          <h3 style="font-size:18px;font-weight:800;margin-bottom:8px;">确认从云端拉取数据？</h3>
-          <p style="color:var(--text-light);font-size:14px;margin-bottom:16px;line-height:1.7;">
-            此操作将<strong style="color:#C62828;">用云端数据覆盖本地数据</strong>。<br>
-            当前本地数据将丢失，请确认！
+      <!-- ⚠️ 智能同步：冲突对比弹窗 -->
+      <div v-if="showSyncDialog" class="modal-overlay" @click.self="showSyncDialog=false">
+        <div class="modal-box" style="max-width:500px;">
+          <h3 style="font-size:18px;font-weight:800;margin-bottom:8px;text-align:center;">⚠️ 数据不一致</h3>
+          <p style="font-size:13px;color:var(--text-light);text-align:center;margin-bottom:20px;line-height:1.6;">
+            云端与本地数据时间戳不同，可能来自不同设备。<br>请对比后选择保留哪一份数据：
           </p>
-          <!-- 强制拉取选项 -->
-          <div style="background:#FFF9E6;border:1px solid #FFE082;border-radius:10px;padding:12px;margin-bottom:16px;text-align:left;">
-            <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
-              <input type="checkbox" v-model="forcePull" style="margin-top:3px;width:16px;height:16px;accent-color:#7C4DFF;" />
-              <div>
-                <div style="font-size:13px;font-weight:700;color:#B8860B;">🛡️ 启用时间保护（保留本地新数据）</div>
-                <div style="font-size:11px;color:var(--text-light);margin-top:4px;line-height:1.5;">
-                  默认<strong>强制拉取</strong>（用云端数据覆盖本地）。<br>
-                  勾选此项可<strong>启用时间保护</strong>：若本地数据比云端更新，则不覆盖，保留本地数据。
+
+          <!-- 对比卡片 -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
+            <!-- 本地 -->
+            <div style="background:#F0FFF4;border:2px solid #A5D6A7;border-radius:12px;padding:14px;text-align:center;">
+              <div style="font-size:13px;font-weight:700;color:#2E7D32;margin-bottom:10px;">💻 本地</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;text-align:center;">
+                <div>
+                  <div style="font-size:10px;color:var(--text-light);">学生数</div>
+                  <div style="font-size:18px;font-weight:800;color:#2E7D32;">{{ localSyncStats.count }}</div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:var(--text-light);">平均分</div>
+                  <div style="font-size:18px;font-weight:800;color:#2E7D32;">{{ localSyncStats.scoreAvg }}</div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:var(--text-light);">最高分</div>
+                  <div style="font-size:18px;font-weight:800;color:#2E7D32;">{{ localSyncStats.scoreMax }}</div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:var(--text-light);">任务数</div>
+                  <div style="font-size:18px;font-weight:800;color:#2E7D32;">{{ localStats.tasks }}</div>
                 </div>
               </div>
-            </label>
+              <div v-if="localSyncStats.lastUpdateTime" style="font-size:10px;color:var(--text-light);margin-top:10px;border-top:1px solid #A5D6A7;padding-top:8px;line-height:1.4;">
+                最后更新<br>{{ formatTime(localSyncStats.lastUpdateTime) }}
+              </div>
+            </div>
+
+            <!-- 云端 -->
+            <div style="background:#FFF3E0;border:2px solid #FFB74D;border-radius:12px;padding:14px;text-align:center;">
+              <div style="font-size:13px;font-weight:700;color:#E65100;margin-bottom:10px;">☁️ 云端</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;text-align:center;">
+                <div>
+                  <div style="font-size:10px;color:var(--text-light);">学生数</div>
+                  <div style="font-size:18px;font-weight:800;color:#E65100;">{{ cloudSyncStats.count }}</div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:var(--text-light);">平均分</div>
+                  <div style="font-size:18px;font-weight:800;color:#E65100;">{{ cloudSyncStats.scoreAvg }}</div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:var(--text-light);">最高分</div>
+                  <div style="font-size:18px;font-weight:800;color:#E65100;">{{ cloudSyncStats.scoreMax }}</div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:var(--text-light);">任务数</div>
+                  <div style="font-size:18px;font-weight:800;color:#E65100;">{{ cloudStats?.tasks || '?' }}</div>
+                </div>
+              </div>
+              <div v-if="cloudSyncStats.lastUpdateTime" style="font-size:10px;color:var(--text-light);margin-top:10px;border-top:1px solid #FFB74D;padding-top:8px;line-height:1.4;">
+                最后更新<br>{{ formatTime(cloudSyncStats.lastUpdateTime) }}
+              </div>
+            </div>
           </div>
-          <!-- 时间检测说明 -->
-          <div v-if="!forcePull" style="background:#FFF3E0;border:1px solid #FFB74D;border-radius:10px;padding:10px;margin-bottom:16px;font-size:12px;color:#E65100;text-align:left;line-height:1.6;">
-            ⚡ <strong>默认模式</strong>：强制用云端数据覆盖本地，无需时间检测，适合完整同步场景。
-          </div>
-          <div v-else style="background:#E8F5E9;border:1px solid #A5D6A7;border-radius:10px;padding:10px;margin-bottom:16px;font-size:12px;color:#2E7D32;text-align:left;line-height:1.6;">
-            🛡️ <strong>时间保护模式</strong>：系统自动对比本地和云端的数据时间，若本地更新则跳过，避免覆盖本地最新改动。
-          </div>
+
+          <!-- 选择按钮 -->
           <div style="display:flex;gap:10px;">
-            <button class="btn btn-ghost" style="flex:1" @click="confirmOverwrite=false">取消</button>
-            <button class="btn" style="flex:1;background:#E65100;color:white;border:none;" @click="doPull">
-              {{ !forcePull ? '⚡ 强制拉取' : '🛡️ 确认拉取' }}
+            <button class="btn" style="flex:1;background:#2E7D32;color:white;border:none;font-weight:700;"
+                    :disabled="syncDialogResolving" @click="resolveConflict('local')">
+              {{ syncDialogResolving ? '处理中...' : '📤 保留本地并推送' }}
+            </button>
+            <button class="btn" style="flex:1;background:#E65100;color:white;border:none;font-weight:700;"
+                    :disabled="syncDialogResolving" @click="resolveConflict('cloud')">
+              {{ syncDialogResolving ? '处理中...' : '📥 使用云端数据' }}
             </button>
           </div>
         </div>

@@ -242,6 +242,9 @@ const Store = {
     achievements: [], // 成就列表
     auditLog: [],     // 操作记录日志
     auditLogRev: 0,   // 操作记录版本号（驱动响应式）
+    _syncConflict: false,       // 自动检测到云端冲突
+    _syncConflictCloudTime: null, // 云端数据时间
+    _syncConflictLocalTime: null, // 本地数据时间
   }),
   
   // ---- SHA-256 哈希（用于管理员密码验证）----
@@ -317,7 +320,7 @@ const Store = {
           this.state.students.sort((a, b) => a.id - b.id);
           this.state.studentRev++;
           await dbStorage.storeStudents(this.state.students);
-        }
+          this._scheduleCloudPush();        }
         this._logAudit('回退操作', `恢复了学生「${data.name}」`, null);
         return { success: true, msg: `已恢复学生「${data.name}」` };
       }
@@ -327,7 +330,7 @@ const Store = {
           Vue.set(this.state.students, idx, { ...data });
           this.state.studentRev++;
           await dbStorage.storeStudents(this.state.students);
-        }
+          this._scheduleCloudPush();        }
         this._logAudit('回退操作', `恢复了学生「${data.name}」的数据`, null);
         return { success: true, msg: `已恢复学生「${data.name}」的数据` };
       }
@@ -337,7 +340,7 @@ const Store = {
           this.state.tasks.push(data);
           this.state.taskRev++;
           await dbStorage.storeTasks(this.state.tasks);
-        }
+          this._scheduleCloudPush();        }
         this._logAudit('回退操作', `恢复了任务「${data.title}」`, null);
         return { success: true, msg: `已恢复任务「${data.title}」` };
       }
@@ -349,7 +352,7 @@ const Store = {
           this.state.students = [...this.state.students];
           this.state.studentRev++;
           await dbStorage.storeStudents(this.state.students);
-        }
+          this._scheduleCloudPush();        }
         this._logAudit('回退操作', `恢复了学生「${data.name}」的积分为 ${data.points}`, null);
         return { success: true, msg: `已恢复学生「${data.name}」积分为 ${data.points}` };
       }
@@ -386,6 +389,16 @@ const Store = {
         // 用 splice 替换数组内容，确保 Vue 响应式正确追踪
         this.state.students.splice(0, this.state.students.length, ...cachedStudents);
         console.log('从本地存储加载学生数据');
+
+        // 如果本地有真实数据但时间戳未初始化，设为当前时间保护本地数据
+        const hasRealStudents = cachedStudents.some(s => !s._isPlaceholder);
+        if (hasRealStudents) {
+          const meta = await dbStorage.getMeta('studentsUpdatedAt');
+          if (!meta) {
+            await dbStorage.storeMeta('studentsUpdatedAt', new Date().toISOString());
+            console.log('[Store] 初始化 studentsUpdatedAt 时间戳（保护本地数据）');
+          }
+        }
       } else {
         // 首次使用，无缓存数据
         if (DEBUG_MODE) {
@@ -396,7 +409,7 @@ const Store = {
           // 正常模式：写入占位学生
           this.state.students = [JSON.parse(JSON.stringify(PLACEHOLDER_STUDENT))];
           await dbStorage.storeStudents(this.state.students);
-          console.log('写入占位学生数据');
+          this._scheduleCloudPush();          console.log('写入占位学生数据');
         }
       }
       
@@ -410,7 +423,7 @@ const Store = {
         } else {
           this.state.tasks = [];
           await dbStorage.storeTasks(this.state.tasks);
-          console.log('写入空任务数据');
+          this._scheduleCloudPush();          console.log('写入空任务数据');
         }
       }
       
@@ -418,6 +431,10 @@ const Store = {
       this.initAchievements();
       await this._loadAuditLog();
       this.state._initialized = true;
+      
+      // 后台检测云端同步状态（不阻塞加载）
+      this._autoSyncCheck().catch(() => {});
+      
       console.log('本地存储初始化完成');
     } catch (e) {
       console.error('[Store] 初始化失败:', e);
@@ -427,6 +444,44 @@ const Store = {
       this.initAchievements();
       this.state._initialized = true;
       console.log('初始化使用占位学生');
+    }
+  },
+
+  // ---- 防抖云端推送（每次数据变更后调度，3秒内多次变更只推一次）----
+  _pushTimer: null,
+  _scheduleCloudPush() {
+    clearTimeout(this._pushTimer);
+    this._pushTimer = setTimeout(() => {
+      this.cloudPush().catch(e => console.warn('[Store] 自动推送失败:', e));
+    }, 3000);
+  },
+
+  // ---- 后台自动检测云端同步冲突（页面加载时调用，不阻塞）----
+  async _autoSyncCheck() {
+    try {
+      const ping = await CloudSync.ping();
+      if (!ping.ok) return; // 无网络或无 Supabase
+
+      const cloudTimes = await CloudSync.getCloudLastUpdateTime();
+      if (!cloudTimes || !cloudTimes.students) return; // 云端无数据
+
+      const localTime = await dbStorage.getMeta('studentsUpdatedAt');
+      if (!localTime) return; // 从未同步过
+
+      const diff = Math.abs(new Date(cloudTimes.students).getTime() - new Date(localTime).getTime());
+      if (diff <= 2000) {
+        // 一致 → 静默推送本地到云端
+        await this.cloudPush();
+        console.log('[AutoSync] 云端数据一致，已静默推送');
+      } else {
+        // 不一致 → 设置冲突标志，AdminCloud 打开时自动弹窗
+        this.state._syncConflict = true;
+        this.state._syncConflictCloudTime = cloudTimes.students.toISOString();
+        this.state._syncConflictLocalTime = localTime;
+        console.log('[AutoSync] ⚠️ 检测到数据冲突（本地:', localTime, '云端:', cloudTimes.students.toISOString(), '）');
+      }
+    } catch (e) {
+      console.warn('[AutoSync] 后台检测失败（不影响使用）:', e.message || e);
     }
   },
 
@@ -494,7 +549,7 @@ const Store = {
       if (!DEBUG_MODE) {
         try {
           await dbStorage.storeStudents(this.state.students);
-          console.log('学生数据已同步到本地存储');
+          this._scheduleCloudPush();          console.log('学生数据已同步到本地存储');
         } catch (err) {
           console.warn('同步学生数据到本地存储失败:', err);
         }
@@ -528,7 +583,7 @@ const Store = {
     // 同步到本地存储（DEBUG 模式不保存）
     if (!DEBUG_MODE) {
       await dbStorage.storeStudents(this.state.students);
-      console.log('宠物领养数据已同步到本地存储');
+      this._scheduleCloudPush();      console.log('宠物领养数据已同步到本地存储');
       return { success: true };
     } else {
       console.log('DEBUG 模式：宠物领养不持久化');
@@ -555,7 +610,7 @@ const Store = {
     try {
       if (!DEBUG_MODE) {
         await dbStorage.storeStudents(this.state.students);
-        console.log('宠物信息已更新并同步');
+        this._scheduleCloudPush();        console.log('宠物信息已更新并同步');
       } else {
         console.log('DEBUG 模式：宠物更新不持久化');
       }
@@ -591,7 +646,7 @@ const Store = {
     try {
       if (!DEBUG_MODE) {
         await dbStorage.storeStudents(this.state.students);
-        console.log('宠物复活数据已同步到本地存储');
+        this._scheduleCloudPush();        console.log('宠物复活数据已同步到本地存储');
         // 自动同步到云端
         this._autoSyncToCloud();
       } else {
@@ -629,6 +684,7 @@ const Store = {
       { type: 'points_change', data: { id: student.id, name: student.name, points: oldPoints } }
     );
     // 积分不再给宠物加经验，经验只通过喂食/洗澡/玩耍等护理行为获得
+    this._scheduleCloudPush();
     return { levelUp: false };
   },
 
@@ -648,7 +704,7 @@ const Store = {
       { type: 'points_change', data: { id: student.id, name: student.name, points: oldPoints } }
     );
     if (!DEBUG_MODE) await dbStorage.storeStudents(this.state.students);
-    return { success: true, remaining: student.points };
+    this._scheduleCloudPush();    return { success: true, remaining: student.points };
   },
 
   // ---- 使用道具 ----
@@ -737,7 +793,7 @@ const Store = {
       // 同步到本地存储（DEBUG 模式不保存）
       if (!DEBUG_MODE) {
         await dbStorage.storeStudents(this.state.students);
-        console.log('道具使用数据已同步到本地存储');
+        this._scheduleCloudPush();        console.log('道具使用数据已同步到本地存储');
         // 自动同步到云端
         this._autoSyncToCloud();
       } else {
@@ -786,7 +842,7 @@ const Store = {
       // 同步到本地存储（DEBUG 模式不保存）
       if (!DEBUG_MODE) {
         await dbStorage.storeStudents(this.state.students);
-        console.log('道具购买数据已同步到本地存储');
+        this._scheduleCloudPush();        console.log('道具购买数据已同步到本地存储');
       } else {
         console.log('DEBUG 模式：道具购买不持久化');
       }
@@ -813,7 +869,7 @@ const Store = {
     student.money += income;
     if (!DEBUG_MODE) {
       await dbStorage.storeStudents(this.state.students);
-    }
+      this._scheduleCloudPush();    }
     return income;
   },
 
@@ -837,7 +893,7 @@ const Store = {
         // 同步到本地存储（DEBUG 模式不保存）
         if (!DEBUG_MODE) {
           await dbStorage.storeTasks(this.state.tasks);
-          console.log('任务提交数据已同步到本地存储');
+          this._scheduleCloudPush();          console.log('任务提交数据已同步到本地存储');
         } else {
           console.log('DEBUG 模式：任务提交不持久化');
         }
@@ -872,7 +928,7 @@ const Store = {
       // 同步任务数据到本地存储（DEBUG 模式不保存）
       if (!DEBUG_MODE) {
         await dbStorage.storeTasks(this.state.tasks);
-      } else {
+        this._scheduleCloudPush();      } else {
         console.log('DEBUG 模式：任务审核不持久化');
       }
       
@@ -890,7 +946,7 @@ const Store = {
           // 同步学生数据到本地存储（DEBUG 模式不保存）
           if (!DEBUG_MODE) {
             await dbStorage.storeStudents(this.state.students);
-            console.log('任务审核数据已同步到本地存储');
+            this._scheduleCloudPush();            console.log('任务审核数据已同步到本地存储');
             // 自动同步到云端
             this._autoSyncToCloud();
           }
@@ -928,7 +984,7 @@ const Store = {
       // 同步到本地存储（DEBUG 模式不保存）
       if (!DEBUG_MODE) {
         await dbStorage.storeTasks(this.state.tasks);
-        console.log('任务创建数据已同步到本地存储');
+        this._scheduleCloudPush();        console.log('任务创建数据已同步到本地存储');
       } else {
         console.log('DEBUG 模式：任务创建不持久化');
       }
@@ -955,7 +1011,7 @@ const Store = {
 
       if (!DEBUG_MODE) {
         await dbStorage.storeTasks(this.state.tasks);
-      }
+        this._scheduleCloudPush();      }
       return { success: true };
     } catch (err) {
       console.warn('删除任务失败:', err);
@@ -974,7 +1030,7 @@ const Store = {
         // 同步到本地存储（DEBUG 模式不保存）
         if (!DEBUG_MODE) {
           await dbStorage.storeTasks(this.state.tasks);
-          console.log('任务更新数据已同步到本地存储');
+          this._scheduleCloudPush();          console.log('任务更新数据已同步到本地存储');
         } else {
           console.log('DEBUG 模式：任务更新不持久化');
         }
@@ -1028,8 +1084,9 @@ const Store = {
       // 同步到本地存储（DEBUG 模式不保存）
       if (!DEBUG_MODE) {
         await dbStorage.storeStudents(this.state.students);
-      }
+        this._scheduleCloudPush();      }
 
+      this._scheduleCloudPush();
       return { success: true, student: newStudent };
     } catch (err) {
       console.warn('添加学生失败:', err);
@@ -1054,6 +1111,7 @@ const Store = {
       // 通知 Vue 响应式更新
       this.state.studentRev++;
 
+      this._scheduleCloudPush();
       return { success: true };
     } catch (err) {
       console.warn('删除学生失败:', err);
@@ -1082,7 +1140,8 @@ const Store = {
 
       if (!DEBUG_MODE) {
         await dbStorage.storeStudents(this.state.students);
-      }
+        this._scheduleCloudPush();      }
+      this._scheduleCloudPush();
       return { success: true };
     } catch (err) {
       console.warn('发放积分失败:', err);
@@ -1108,7 +1167,7 @@ const Store = {
 
           if (!DEBUG_MODE) {
             await dbStorage.storeStudents(this.state.students);
-          }
+            this._scheduleCloudPush();          }
           return { success: true, deducted: pts };
         } else {
           return { success: false, msg: '积分不足' };
@@ -1138,8 +1197,8 @@ const Store = {
         this.state.students = [JSON.parse(JSON.stringify(PLACEHOLDER_STUDENT))];
         this.state.tasks    = [];
         await dbStorage.storeStudents(this.state.students);
-        await dbStorage.storeTasks(this.state.tasks);
-        this.state.taskRev++;
+        this._scheduleCloudPush();        await dbStorage.storeTasks(this.state.tasks);
+        this._scheduleCloudPush();        this.state.taskRev++;
         this.state.studentRev++;
         console.log('演示数据已重置');
       }
@@ -1227,7 +1286,7 @@ const Store = {
         // 同步到本地存储（DEBUG 模式不保存）
         if (!DEBUG_MODE) {
           await dbStorage.storeStudents(this.state.students);
-          console.log('学生密码重置数据已同步到本地存储');
+          this._scheduleCloudPush();          console.log('学生密码重置数据已同步到本地存储');
           // 自动同步到云端
           this._autoSyncToCloud();
         }
@@ -1269,8 +1328,8 @@ const Store = {
     try {
       // 先同步最新数据到 IndexedDB
       await dbStorage.storeStudents(this.state.students);
-      await dbStorage.storeTasks(this.state.tasks);
-      // 创建备份
+      this._scheduleCloudPush();      await dbStorage.storeTasks(this.state.tasks);
+      this._scheduleCloudPush();      // 创建备份
       const backup = await dbStorage.createBackup();
       if (backup) {
         this.toast('💾 数据备份成功', 'success');
@@ -1329,8 +1388,8 @@ const Store = {
   async exportJSON() {
     try {
       await dbStorage.storeStudents(this.state.students);
-      await dbStorage.storeTasks(this.state.tasks);
-      const students = await dbStorage.getStudents();
+      this._scheduleCloudPush();      await dbStorage.storeTasks(this.state.tasks);
+      this._scheduleCloudPush();      const students = await dbStorage.getStudents();
       const tasks    = await dbStorage.getTasks();
       const payload  = {
         version:   1,
@@ -1363,8 +1422,8 @@ const Store = {
       }
       // 写入 IndexedDB
       await dbStorage.storeStudents(payload.students);
-      await dbStorage.storeTasks(payload.tasks || []);
-      // 更新内存状态
+      this._scheduleCloudPush();      await dbStorage.storeTasks(payload.tasks || []);
+      this._scheduleCloudPush();      // 更新内存状态
       this.state.students.splice(0, this.state.students.length, ...payload.students);
       this.state.tasks.splice(0, this.state.tasks.length, ...(payload.tasks || []));
       this.state.taskRev++;
@@ -1389,7 +1448,7 @@ const Store = {
       Vue.delete(student, 'avatar');
     }
     if (!DEBUG_MODE) await dbStorage.storeStudents(this.state.students);
-    // 自动同步到云端
+    this._scheduleCloudPush();    // 自动同步到云端
     this._autoSyncToCloud();
     return true;
   },
@@ -1604,7 +1663,7 @@ const Store = {
       // 同步到本地存储（DEBUG 模式不保存）
       if (!DEBUG_MODE) {
         await dbStorage.storeStudents(this.state.students);
-        console.log('宠物状态衰减数据已同步到本地存储');
+        this._scheduleCloudPush();        console.log('宠物状态衰减数据已同步到本地存储');
         // 自动同步到云端
         this._autoSyncToCloud();
       } else {
@@ -1659,7 +1718,7 @@ const Store = {
         // 同步到本地存储（DEBUG 模式不保存）
         if (!DEBUG_MODE) {
           await dbStorage.storeStudents(this.state.students);
-          console.log('宠物死亡数据已同步到本地存储');
+          this._scheduleCloudPush();          console.log('宠物死亡数据已同步到本地存储');
         } else {
           console.log('DEBUG 模式：宠物死亡不持久化');
         }
@@ -1686,7 +1745,7 @@ const Store = {
       // 同步到本地存储（DEBUG 模式不保存）
       if (!DEBUG_MODE) {
         await dbStorage.storeStudents(this.state.students);
-        console.log('离线惩罚数据已同步到本地存储');
+        this._scheduleCloudPush();        console.log('离线惩罚数据已同步到本地存储');
       } else {
         console.log('DEBUG 模式：离线惩罚不持久化');
       }
@@ -1724,8 +1783,8 @@ const Store = {
         this.state.students = [];
         this.state.tasks = [];
         await dbStorage.storeStudents([JSON.parse(JSON.stringify(PLACEHOLDER_STUDENT))]);
-        await dbStorage.storeTasks([]);
-        console.log('所有数据已清空并恢复占位学生');
+        this._scheduleCloudPush();        await dbStorage.storeTasks([]);
+        this._scheduleCloudPush();        console.log('所有数据已清空并恢复占位学生');
       } else {
         this.state.students = [];
         this.state.tasks = [];

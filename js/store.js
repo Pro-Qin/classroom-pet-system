@@ -2012,7 +2012,7 @@ const Store = {
   // ---- 版本与更新检测 ----
   async checkForUpdate() {
     try {
-      const resp = await fetch('https://raw.githubusercontent.com/Pro-Qin/classroom-pet-system/master/version.json', { 
+      const resp = await fetch('https://gitee.com/am-zzq/classroom-pet-system/raw/master/version.json', { 
         cache: 'no-cache',
         signal: AbortSignal.timeout(5000)
       });

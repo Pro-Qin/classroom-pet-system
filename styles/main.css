@@ -2331,4 +2331,29 @@ input:checked + .slider:before {
   .picker-mrank-row { grid-template-columns: 1fr; }
 }
 
+/* ===== Apple Design / 触控 / 多邻国按钮 风格优化 ===== */
+body, input, textarea, button {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+@media (hover: none) and (pointer: coarse) {
+  .btn, button, .nav-item, .topbar-avatar { min-height: 44px; min-width: 44px; }
+  .btn-sm { min-height: 36px; min-width: 36px; }
+  .teacher-student-grid { gap: 16px; }
+  .card { padding: 18px !important; }
+  .bottom-nav { padding-bottom: max(env(safe-area-inset-bottom), 8px) !important; }
+}
+.btn-primary, .btn-success, .btn-warning, .btn-danger {
+  border-radius: 14px !important;
+  font-weight: 800 !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+  transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.12s ease !important;
+}
+.btn-primary:active, .btn-success:active, .btn-warning:active, .btn-danger:active {
+  transform: scale(0.96) !important;
+}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(124,77,255,0.3); border-radius: 3px; }
+
 

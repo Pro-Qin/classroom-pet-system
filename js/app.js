@@ -282,26 +282,29 @@ const App = {
       statusEl.textContent = '⚠️ 加载超时，部分数据可能不完整';
     }
 
-    // 阶段3：检查更新（在加载画面中显示，2秒超时不阻塞）
+    // 阶段3：检查更新（在加载画面中显示，5秒超时）
     if (statusEl) statusEl.textContent = '正在检查更新...';
     let hasUpdate = false;
+    let timedOut = false;
     try {
-      const updateResult = await Promise.race([
-        Store.checkForUpdate(),
-        new Promise(r => setTimeout(() => r(null), 2000))
-      ]);
-      if (updateResult && updateResult.hasUpdate) {
+      const timer = setTimeout(() => { timedOut = true; }, 5000);
+      const updateResult = await Store.checkForUpdate();
+      clearTimeout(timer);
+      if (timedOut) {
+        // 超时（理论上checkForUpdate内部有5秒超时，这里作为兜底）
+        if (statusEl) statusEl.textContent = '⚠️ 更新检查超时，可稍后手动检查';
+        await new Promise(r => setTimeout(r, 500));
+      } else if (updateResult && updateResult.hasUpdate) {
         hasUpdate = true;
         if (statusEl) statusEl.textContent = `🔄 发现新版本 v${updateResult.remote}`;
-        // 延迟一点让用户看到更新提示
         await new Promise(r => setTimeout(r, 800));
       } else {
         if (statusEl) statusEl.textContent = '已是最新版本 ✓';
         await new Promise(r => setTimeout(r, 300));
       }
     } catch (e) {
-      if (statusEl) statusEl.textContent = '数据加载完成 ✓';
-      await new Promise(r => setTimeout(r, 200));
+      if (statusEl) statusEl.textContent = '⚠️ 更新检查失败，不影响使用';
+      await new Promise(r => setTimeout(r, 500));
     }
 
     this.appReady = true;

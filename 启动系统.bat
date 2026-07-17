@@ -10,25 +10,28 @@ echo.
 :: 获取当前目录
 set "CURRENT_DIR=%~dp0"
 
-:: 启动 HTTP 服务器
-echo [1/2] 启动本地服务器...
-start "PetServer" cmd /c "cd /d "%CURRENT_DIR%" && python -m http.server 5500"
+:: 检查 Python
+python --version >nul 2>&1
+if errorlevel 1 (
+    echo [!] 未检测到 Python，尝试直接打开 index.html...
+    start "" "%CURRENT_DIR%index.html"
+    goto :end
+)
 
-:: 等待服务器启动
-timeout /t 2 /nobreak >nul
-
-:: 打开浏览器
-echo [2/2] 打开浏览器...
-start http://localhost:5500/
-
+:: 启动 HTTP 服务器（当前窗口，不另开终端）
+echo [1/2] 启动本地服务器（端口 5500）...
 echo.
-echo ====================================
-echo    系统已启动！
-echo    访问地址: http://localhost:5500/
-echo.
-echo    关闭窗口即可关闭服务器
-echo ====================================
+echo    服务器地址: http://localhost:5500/
+echo    关闭此窗口即可停止服务器
 echo.
 
-:: 保持窗口打开
-pause
+:: 启动浏览器（自动打开）
+start "" http://localhost:5500/
+
+:: 在前台运行服务器（-m http.server 的简单方式）
+python -m http.server 5500 --directory "%CURRENT_DIR%"
+
+:end
+echo.
+echo 按任意键退出...
+pause >nul

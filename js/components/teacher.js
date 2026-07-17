@@ -203,6 +203,18 @@ const TeacherStudents = {
       newQuickDeduct: '',
       // 排序方式
       sortKey: localStorage.getItem('studentSortKey') || 'name_asc',
+      // 批量加减分
+      showBatchModal: false,
+      batchPoints: 5,
+      batchReason: '',
+      batchAction: 'grant', // 'grant' 或 'deduct'
+      batchSelected: new Set(),
+      batchLetterIndex: {},
+      batchScrollTarget: null,
+      // 快捷理由
+      quickReasons: [],
+      showAddReasonModal: false,
+      newReason: '',
     };
   },
   computed: {
@@ -251,6 +263,15 @@ const TeacherStudents = {
       const d = localStorage.getItem('customQuickDeducts');
       if (d) this.customQuickDeducts = JSON.parse(d);
     } catch (e) {}
+    // 加载快捷理由
+    try {
+      const r = localStorage.getItem('quickReasons');
+      if (r) this.quickReasons = JSON.parse(r);
+    } catch (e) {}
+    if (this.quickReasons.length === 0) {
+      this.quickReasons = ['课堂表现优秀', '作业完成出色', '积极回答问题', '帮助同学'];
+      localStorage.setItem('quickReasons', JSON.stringify(this.quickReasons));
+    }
   },
   methods: {
     async addStudent() {
@@ -270,7 +291,7 @@ const TeacherStudents = {
     },
     openGrant(student) {
       this.grantStudent = student;
-      this.grantPoints = 20;
+      this.grantPoints = 5;
       this.grantReason = '';
       this.showGrantModal = true;
     },
@@ -315,6 +336,77 @@ const TeacherStudents = {
     removeQuickDeduct(val) {
       this.customQuickDeducts = this.customQuickDeducts.filter(v => v !== val);
       localStorage.setItem('customQuickDeducts', JSON.stringify(this.customQuickDeducts));
+    },
+    // ---- 批量加减分 ----
+    openBatchModal() {
+      this.showBatchModal = true;
+      this.batchPoints = 5;
+      this.batchReason = '';
+      this.batchAction = 'grant';
+      this.batchSelected = new Set();
+      // 构建字母索引
+      const students = [...Store.state.students].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+      const idx = {};
+      students.forEach(s => {
+        const letter = (s.name[0] || '').toUpperCase();
+        if (/[A-Z]/.test(letter)) {
+          if (!idx[letter]) idx[letter] = [];
+          idx[letter].push(s.id);
+        } else {
+          if (!idx['#']) idx['#'] = [];
+          idx['#'].push(s.id);
+        }
+      });
+      this.batchLetterIndex = idx;
+    },
+    batchToggleAll(select) {
+      if (select) {
+        this.batchSelected = new Set(Store.state.students.map(s => s.id));
+      } else {
+        this.batchSelected = new Set();
+      }
+    },
+    batchToggleStudent(id) {
+      const newSet = new Set(this.batchSelected);
+      if (newSet.has(id)) newSet.delete(id); else newSet.add(id);
+      this.batchSelected = newSet;
+    },
+    batchScrollTo(letter) {
+      const el = document.getElementById('batch-' + letter);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    async doBatch() {
+      const ids = [...this.batchSelected];
+      if (ids.length === 0) {
+        this.$emit('toast', '请先选择学生', 'warning'); return;
+      }
+      const pts = this.batchPoints;
+      const reason = this.batchReason || `批量${this.batchAction === 'grant' ? '加' : '减'}分`;
+      let ok = 0;
+      for (const id of ids) {
+        const r = this.batchAction === 'grant'
+          ? await Store.grantPoints(id, pts, reason)
+          : await Store.deductPoints(id, pts, reason);
+        if (r.success) ok++;
+      }
+      this.$emit('toast', `✅ 批量操作完成：${ok}/${ids.length} 人${this.batchAction === 'grant' ? '加' : '减'}分成功`, 'success');
+      this.showBatchModal = false;
+      this._rev++;
+    },
+    // ---- 快捷理由管理 ----
+    addQuickReason() {
+      const r = (this.newReason || '').trim();
+      if (!r) { this.$emit('toast', '请输入理由内容', 'warning'); return; }
+      if (this.quickReasons.includes(r)) { this.$emit('toast', '该理由已存在', 'warning'); return; }
+      this.quickReasons = [...this.quickReasons, r];
+      this.newReason = '';
+      this.showAddReasonModal = false;
+      localStorage.setItem('quickReasons', JSON.stringify(this.quickReasons));
+      this.$emit('toast', '✅ 已添加快捷理由', 'success');
+    },
+    removeQuickReason(reason) {
+      this.quickReasons = this.quickReasons.filter(r => r !== reason);
+      localStorage.setItem('quickReasons', JSON.stringify(this.quickReasons));
     },
     async doGrant() {
       if (!this.grantPoints || this.grantPoints <= 0) {
@@ -474,50 +566,47 @@ const TeacherStudents = {
         </button>
       </div>
 
-      <!-- 学生卡片列表（响应式多栏网格） -->
+      <!-- 学生卡片列表（三列网格） -->
       <div class="teacher-student-grid">
-        <div v-for="s in students" :key="s.id" class="card" style="padding:14px 16px;position:relative;">
-          <!-- 头像+姓名+积分（点击区域） -->
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;cursor:pointer;"
-               @click.stop="clickStudentCard(s)">
-            <!-- 圆形头像，优先显示自定义头像/宠物图片，兜底显示 emoji -->
-            <div style="width:50px;height:50px;border-radius:50%;overflow:hidden;flex-shrink:0;background:#F8F0FF;display:flex;align-items:center;justify-content:center;">
-              <img v-if="s.studentAvatar && s.studentAvatar.startsWith('data:')" :src="s.studentAvatar" style="width:100%;height:100%;object-fit:cover;" />
-              <img v-else-if="s.petImage" :src="s.petImage" style="width:100%;height:100%;object-fit:cover;" />
-              <span v-else style="font-size:36px;">{{ s.petEmoji }}</span>
-            </div>
-            <div style="flex:1;min-width:0;">
-              <div style="font-size:15px;font-weight:800;">{{ s.name }}</div>
-              <div style="font-size:12px;color:var(--text-light);">{{ s.username }}</div>
-              <div style="font-size:11px;color:var(--text-light);">加入 {{ s.joinDate }}</div>
-            </div>
-            <div style="text-align:right;flex-shrink:0;">
-              <div style="color:var(--warning);font-weight:800;font-size:16px;">⭐{{ s.points||0 }}</div>
-              <span v-if="s.petType" class="badge badge-success" style="font-size:11px;">Lv.{{ s.levelInfo.level }} {{ s.levelInfo.name }}</span>
-              <span v-else class="badge badge-warning" style="font-size:11px;">未领宠物</span>
-            </div>
+        <div v-for="s in students" :key="s.id" 
+             style="background:linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02));backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:16px;text-align:center;transition:transform 0.15s,box-shadow 0.15s;cursor:pointer;"
+             @click.stop="clickStudentCard(s)"
+             onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(124,77,255,0.15)'"
+             onmouseout="this.style.transform='';this.style.boxShadow=''">
+          <!-- 头像 -->
+          <div style="width:56px;height:56px;border-radius:50%;overflow:hidden;margin:0 auto 10px;background:rgba(124,77,255,0.15);display:flex;align-items:center;justify-content:center;border:2px solid rgba(124,77,255,0.3);">
+            <img v-if="s.studentAvatar && s.studentAvatar.startsWith('data:')" :src="s.studentAvatar" style="width:100%;height:100%;object-fit:cover;" />
+            <img v-else-if="s.petImage" :src="s.petImage" style="width:100%;height:100%;object-fit:cover;" />
+            <span v-else style="font-size:30px;">{{ s.petEmoji }}</span>
           </div>
-
-          <!-- 内联确认框（同级、不置顶、不模糊背景） -->
+          <!-- 学生名 -->
+          <div style="font-size:15px;font-weight:800;color:#fff;margin-bottom:2px;">{{ s.name }}</div>
+          <!-- 宠物名 -->
+          <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:8px;">🐾 {{ s.petName || '未领取宠物' }}</div>
+          <!-- 积分 -->
+          <div style="background:linear-gradient(135deg,rgba(255,193,7,0.15),rgba(255,152,0,0.1));border-radius:8px;padding:4px 12px;display:inline-block;margin-bottom:10px;">
+            <span style="color:#ffd54f;font-weight:800;font-size:16px;">⭐{{ s.points||0 }}</span>
+          </div>
+          <!-- 加减分按钮 -->
+          <div style="display:flex;gap:6px;justify-content:center;">
+            <button class="btn btn-sm" @click.stop="openGrant(s)"
+                    style="background:linear-gradient(135deg,#4CAF50,#2E7D32);color:#fff;border:none;border-radius:10px;padding:6px 16px;font-weight:700;font-size:13px;cursor:pointer;transition:transform 0.1s;"
+                    onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform=''">
+              +5
+            </button>
+            <button class="btn btn-sm" @click.stop="openDeduct(s)"
+                    style="background:linear-gradient(135deg,#FF9800,#E65100);color:#fff;border:none;border-radius:10px;padding:6px 16px;font-weight:700;font-size:13px;cursor:pointer;transition:transform 0.1s;"
+                    onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform=''">
+              -5
+            </button>
+          </div>
+          <!-- 内联确认框 -->
           <div v-if="openStudentConfirm && openStudentConfirm.id === s.id"
-               style="background:#F8F0FF;border:1.5px solid var(--primary);border-radius:10px;padding:10px 14px;margin-bottom:10px;
-                      display:flex;align-items:center;justify-content:space-between;gap:10px;animation:fadeIn 0.15s ease;">
-            <div style="font-size:13px;color:var(--text-dark);font-weight:600;">
-              打开 <span style="color:var(--primary);">{{ s.name }}</span> 的学生系统？
-            </div>
-            <div style="display:flex;gap:6px;flex-shrink:0;">
-              <button class="btn btn-ghost btn-sm" style="padding:4px 10px;font-size:12px;" @click.stop="openStudentConfirm=null">否</button>
-              <button class="btn btn-primary btn-sm" style="padding:4px 10px;font-size:12px;" @click.stop="openStudentSystem(s)">是</button>
-            </div>
-          </div>
-
-          <!-- 宠物名 + 操作按钮 -->
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-            <div style="font-size:12px;color:var(--text-mid);">🐾 {{ s.petName || '未领取宠物' }}</div>
-            <div style="display:flex;gap:4px;flex-wrap:wrap;">
-              <button class="btn btn-warning btn-sm" @click.stop="openGrant(s)">⭐</button>
-              <button class="btn btn-sm" style="background:#FF9800;color:white;border:none;" @click.stop="openDeduct(s)">⬇️</button>
-              <button class="btn btn-danger btn-sm" @click.stop="confirmDelete(s.id)">🗑️</button>
+               style="margin-top:10px;padding:8px 12px;background:rgba(124,77,255,0.15);border:1px solid rgba(124,77,255,0.3);border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;animation:fadeIn 0.15s ease;">
+            <div style="font-size:12px;color:rgba(255,255,255,0.7);">打开 <span style="color:#a78bfa;">{{ s.name }}</span> 的系统？</div>
+            <div style="display:flex;gap:4px;">
+              <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px;color:rgba(255,255,255,0.5);" @click.stop="openStudentConfirm=null">否</button>
+              <button class="btn btn-primary btn-sm" style="padding:2px 8px;font-size:11px;" @click.stop="openStudentSystem(s)">是</button>
             </div>
           </div>
         </div>
@@ -556,35 +645,56 @@ const TeacherStudents = {
           </div>
         </div>
         <div class="modal-box" style="position:relative;z-index:2;">
-          <h3 style="font-size:18px;font-weight:800;margin-bottom:6px;">⭐ 发放积分</h3>
-          <p style="color:var(--text-light);font-size:13px;margin-bottom:16px;">给 {{ grantStudent.name }} 发放积分奖励</p>
+          <h3 style="font-size:18px;font-weight:800;margin-bottom:6px;color:#81C784;">⭐ 发放积分</h3>
+          <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-bottom:16px;">给 {{ grantStudent.name }} 发放积分奖励</p>
           <div class="input-group">
-            <label>积分数量</label>
-            <input class="input-field" type="number" v-model="grantPoints" min="1" max="500" />
+            <label style="color:rgba(255,255,255,0.7);">积分数量</label>
+            <input class="input-field" type="number" v-model="grantPoints" min="1" max="999" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;font-size:20px;font-weight:700;text-align:center;padding:12px;" />
           </div>
           <div class="input-group">
-            <label>发放理由（可选）</label>
-            <input class="input-field" v-model="grantReason" placeholder="例如：课堂表现优秀" />
+            <label style="color:rgba(255,255,255,0.7);">发放理由（可选）</label>
+            <input class="input-field" v-model="grantReason" placeholder="例如：课堂表现优秀" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;" />
+            <!-- 快捷理由 -->
+            <div v-if="quickReasons.length > 0" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;">
+              <button v-for="reason in quickReasons" :key="reason" @click="grantReason=reason"
+                      style="background:rgba(124,77,255,0.1);border:1px solid rgba(124,77,255,0.2);color:#a78bfa;border-radius:8px;padding:2px 10px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px;">
+                {{ reason }}
+                <span @click.stop="removeQuickReason(reason)" style="font-size:10px;color:rgba(255,255,255,0.3);">✕</span>
+              </button>
+              <button @click="showAddReasonModal=true" style="background:rgba(124,77,255,0.1);border:1px dashed rgba(124,77,255,0.2);color:#a78bfa;border-radius:8px;padding:2px 8px;font-size:12px;cursor:pointer;">＋</button>
+            </div>
           </div>
           <!-- 快捷积分（默认 + 自定义） -->
-          <div style="margin-bottom:12px;">
-            <div style="font-size:12px;color:var(--text-light);margin-bottom:6px;">快捷加分</div>
+          <div style="margin-bottom:10px;">
+            <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:6px;">快捷加分</div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-              <button v-for="pts in [10,20,30,50,100]" :key="'d'+pts" class="btn btn-ghost btn-sm" @click="grantPoints=pts">+{{ pts }}</button>
+              <button v-for="pts in [1,2,5,10]" :key="'d'+pts" class="btn btn-sm" @click="grantPoints=pts"
+                      style="background:rgba(76,175,80,0.15);color:#81C784;border:1px solid rgba(76,175,80,0.3);border-radius:10px;padding:4px 12px;font-weight:700;cursor:pointer;">+{{ pts }}</button>
               <button v-for="pts in customQuickPoints" :key="'c'+pts" class="btn btn-sm"
-                      style="background:#EDE7F6;color:#7C4DFF;border:1px solid #7C4DFF;position:relative;padding-right:22px;"
+                      style="background:rgba(124,77,255,0.15);color:#a78bfa;border:1px solid rgba(124,77,255,0.3);border-radius:10px;padding:4px 12px 4px 12px;font-weight:700;position:relative;cursor:pointer;"
                       @click="grantPoints=pts">
                 +{{ pts }}
-                <span style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:10px;color:#aaa;cursor:pointer;"
+                <span style="position:absolute;right:2px;top:2px;font-size:8px;color:rgba(255,255,255,0.3);cursor:pointer;"
                       @click.stop="removeQuickPoint(pts)" title="删除">✕</span>
               </button>
-              <button class="btn btn-ghost btn-sm" style="color:#7C4DFF;border-color:#7C4DFF;font-weight:700;"
-                      @click="showAddQuickModal=true" title="添加常用加分数目">＋添加</button>
+              <button class="btn btn-sm" style="background:rgba(124,77,255,0.2);color:#a78bfa;border:1px dashed rgba(124,77,255,0.3);border-radius:10px;padding:4px 10px;font-weight:700;cursor:pointer;"
+                      @click="showAddQuickModal=true">＋</button>
+            </div>
+          </div>
+          <!-- 快捷倍率 -->
+          <div style="margin-bottom:14px;">
+            <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:6px;">快捷倍率</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button @click="grantPoints = Math.min(999, Math.round(grantPoints * 2))" class="btn btn-sm"
+                      style="background:rgba(33,150,243,0.15);color:#64B5F6;border:1px solid rgba(33,150,243,0.3);border-radius:10px;padding:4px 16px;font-weight:700;cursor:pointer;">×2</button>
+              <button @click="grantPoints = Math.max(1, Math.round(grantPoints * 0.5))" class="btn btn-sm"
+                      style="background:rgba(255,152,0,0.15);color:#FFB74D;border:1px solid rgba(255,152,0,0.3);border-radius:10px;padding:4px 16px;font-weight:700;cursor:pointer;">×0.5</button>
+              <span style="font-size:11px;color:rgba(255,255,255,0.3);align-self:center;">当前：<b style="color:#fff;">+{{ grantPoints }}</b></span>
             </div>
           </div>
           <div style="display:flex;gap:10px;">
-            <button class="btn btn-ghost" style="flex:1" @click="showGrantModal=false">取消</button>
-            <button class="btn btn-success" style="flex:2" @click="doGrant">✅ 发放 {{ grantPoints }} 积分</button>
+            <button class="btn btn-ghost" style="flex:1;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:10px;font-weight:700;cursor:pointer;" @click="showGrantModal=false">取消</button>
+            <button class="btn btn-success" style="flex:2;background:linear-gradient(135deg,#4CAF50,#2E7D32);color:#fff;border:none;border-radius:12px;padding:10px;font-weight:700;font-size:14px;cursor:pointer;transition:transform 0.1s;" @click="doGrant">✅ 发放 {{ grantPoints }} 积分</button>
           </div>
         </div>
       </div>
@@ -678,6 +788,78 @@ const TeacherStudents = {
           <div style="display:flex;gap:8px;margin-top:4px;">
             <button class="btn btn-ghost" style="flex:1" @click="showAddQuickDeductModal=false;newQuickDeduct=''">取消</button>
             <button class="btn btn-danger" style="flex:2;background:#FF9800;border-color:#FF9800;" @click="addQuickDeduct">✅ 添加</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 批量加减分弹窗 -->
+      <div v-if="showBatchModal" class="modal-overlay" @click.self="showBatchModal=false" style="background:rgba(0,0,0,0.7);backdrop-filter:blur(8px);">
+        <div class="modal-box" style="max-width:480px;max-height:80vh;display:flex;flex-direction:column;background:rgba(20,20,40,0.95);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.08);color:#fff;border-radius:20px;">
+          <div style="padding:20px 20px 0;">
+            <h3 style="font-size:18px;font-weight:800;margin-bottom:4px;">📊 批量加减分</h3>
+            <p style="font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:14px;">已选 {{ batchSelected.size }} 名学生</p>
+            <div style="display:flex;gap:8px;margin-bottom:14px;">
+              <input class="input-field" type="number" v-model.number="batchPoints" min="1" max="999" style="width:80px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;text-align:center;font-weight:700;border-radius:10px;padding:8px;" />
+              <button @click="batchAction='grant'" :style="batchAction==='grant'?'background:linear-gradient(135deg,#4CAF50,#2E7D32);color:#fff;':'background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);'" style="border:none;border-radius:10px;padding:8px 16px;font-weight:700;cursor:pointer;">➕ 加分</button>
+              <button @click="batchAction='deduct'" :style="batchAction==='deduct'?'background:linear-gradient(135deg,#FF9800,#E65100);color:#fff;':'background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);'" style="border:none;border-radius:10px;padding:8px 16px;font-weight:700;cursor:pointer;">➖ 扣分</button>
+              <input class="input-field" v-model="batchReason" placeholder="理由（可选）" style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;border-radius:10px;padding:8px;" />
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:10px;">
+              <button @click="batchToggleAll(true)" style="background:rgba(33,150,243,0.15);color:#64B5F6;border:1px solid rgba(33,150,243,0.3);border-radius:8px;padding:4px 12px;font-size:12px;cursor:pointer;">全选</button>
+              <button @click="batchToggleAll(false)" style="background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:4px 12px;font-size:12px;cursor:pointer;">取消全选</button>
+            </div>
+            <!-- 字母索引 -->
+            <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.06);">
+              <button v-for="letter in Object.keys(batchLetterIndex).sort()" :key="letter"
+                      @click="batchScrollTo(letter)"
+                      style="background:none;border:none;color:#a78bfa;font-size:13px;font-weight:700;cursor:pointer;padding:2px 6px;border-radius:4px;">
+                {{ letter }}
+              </button>
+            </div>
+          </div>
+          <!-- 学生列表（可滚动） -->
+          <div style="flex:1;overflow-y:auto;padding:0 20px 14px;">
+            <div v-for="letter in Object.keys(batchLetterIndex).sort()" :key="letter">
+              <div :id="'batch-'+letter" style="font-size:13px;color:#a78bfa;font-weight:700;padding:6px 0 4px;border-bottom:1px solid rgba(255,255,255,0.04);margin-top:4px;">{{ letter }}</div>
+              <div v-for="sid in batchLetterIndex[letter]" :key="sid">
+                <div v-for="s in students.filter(x => x.id === sid)" :key="s.id"
+                     @click="batchToggleStudent(s.id)"
+                     style="display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:8px;cursor:pointer;transition:background 0.1s;"
+                     :style="batchSelected.has(s.id) ? 'background:rgba(124,77,255,0.15);' : ''"
+                     onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background=''">
+                  <div style="width:20px;height:20px;border-radius:6px;border:2px solid rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;"
+                       :style="batchSelected.has(s.id) ? 'background:#7C4DFF;border-color:#7C4DFF;' : ''">
+                    <span v-if="batchSelected.has(s.id)" style="color:#fff;font-size:12px;">✓</span>
+                  </div>
+                  <span style="flex:1;font-weight:600;font-size:14px;color:#fff;">{{ s.name }}</span>
+                  <span style="color:#ffd54f;font-weight:700;">⭐{{ s.points||0 }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- 底部按钮 -->
+          <div style="padding:14px 20px;border-top:1px solid rgba(255,255,255,0.06);display:flex;gap:10px;">
+            <button @click="showBatchModal=false" style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.5);border-radius:12px;padding:10px;font-weight:700;cursor:pointer;">取消</button>
+            <button @click="doBatch" style="flex:2;background:linear-gradient(135deg,#7C4DFF,#FF6B9D);border:none;color:#fff;border-radius:12px;padding:10px;font-weight:700;cursor:pointer;">
+              ✨ 执行批量{{ batchAction==='grant'?'加':'减' }}分（{{ batchSelected.size }}人）
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 添加快捷理由弹窗 -->
+      <div v-if="showAddReasonModal" class="modal-overlay" @click.self="showAddReasonModal=false" style="background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);">
+        <div class="modal-box" style="max-width:340px;background:rgba(20,20,40,0.95);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.08);color:#fff;border-radius:20px;">
+          <h3 style="font-size:16px;font-weight:800;margin-bottom:14px;">📝 添加快捷理由</h3>
+          <div class="input-group">
+            <label style="color:rgba(255,255,255,0.7);">理由内容</label>
+            <input class="input-field" v-model="newReason" placeholder="例如：课堂表现优秀" 
+                   style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;border-radius:10px;padding:10px;width:100%;"
+                   @keyup.enter="addQuickReason" autofocus />
+          </div>
+          <div style="display:flex;gap:10px;margin-top:12px;">
+            <button @click="showAddReasonModal=false;newReason=''" style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.5);border-radius:12px;padding:10px;font-weight:700;cursor:pointer;">取消</button>
+            <button @click="addQuickReason" style="flex:2;background:linear-gradient(135deg,#7C4DFF,#FF6B9D);border:none;color:#fff;border-radius:12px;padding:10px;font-weight:700;cursor:pointer;">✅ 添加</button>
           </div>
         </div>
       </div>
@@ -1566,6 +1748,22 @@ const TeacherApp = {
       this.$emit('logout');
     },
     navTo(key) { this.currentSection = key; this.showAvatarMenu = false; },
+    scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); },
+    undoLastOp() {
+      const log = Store.state.auditLog[0];
+      if (!log || !log.snapshot) { Store.toast('没有可撤回的操作', 'warning'); return; }
+      Store.revertAudit(log.id).then(r => {
+        Store.toast(r.msg, r.success ? 'success' : 'error');
+      });
+    },
+    showBatchModal() {
+      this.currentSection = 'students';
+      this.$nextTick(() => {
+        // 通知 TeacherStudents 打开批量弹窗（通过其 exposed 方法）
+        const comp = this.$refs.studentsComp;
+        if (comp && comp.openBatchModal) comp.openBatchModal();
+      });
+    },
 
     // 每日自动发放宠物经验（基于积分排名，一天一次，日期存云端）
     async _autoDailyExpGrant() {
@@ -1598,33 +1796,34 @@ const TeacherApp = {
     },
   },
   template: `
-    <div style="min-height:100vh;background:#F8F0FF;" @click="showAvatarMenu=false">
+    <div style="min-height:100vh;background:linear-gradient(135deg,#0f0c29 0%,#1a1a3e 40%,#24243e 100%);" @click="showAvatarMenu=false">
 
-      <!-- 顶部导航栏（与学生端同款） -->
-      <div class="topbar">
+      <!-- 顶部导航栏（毛玻璃效果） -->
+      <div class="topbar" style="background:rgba(15,15,30,0.7);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,0.06);">
         <div class="topbar-logo">
-          <span class="logo-icon">🐾</span>
-          <span>课堂宠物</span>
+          <span class="logo-icon" style="font-size:22px;">🐾</span>
+          <span style="font-weight:800;background:linear-gradient(90deg,#fff 0%,#a78bfa 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">课堂宠物</span>
+          <span style="font-size:11px;background:rgba(124,77,255,0.2);color:#a78bfa;padding:2px 8px;border-radius:6px;margin-left:8px;font-weight:600;">教师端</span>
         </div>
         <div class="topbar-right">
-          <!-- 头像 + 下拉菜单 -->
           <div style="position:relative;" @click.stop="showAvatarMenu=false">
             <div class="topbar-avatar" @click.stop="showAvatarMenu=true"
-                 :style="showAvatarMenu ? 'box-shadow:0 0 0 3px var(--primary);' : ''">
+                 :style="showAvatarMenu ? 'box-shadow:0 0 0 3px #7C4DFF;' : ''"
+                 style="background:linear-gradient(135deg,#7C4DFF,#FF6B9D);color:#fff;font-weight:700;">
               {{ teacherAvatar }}
             </div>
             <transition name="fade">
-              <div v-if="showAvatarMenu" class="avatar-dropdown">
+              <div v-if="showAvatarMenu" class="avatar-dropdown" style="background:rgba(20,20,40,0.95);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.08);">
                 <div class="avatar-menu-header">
-                  <div style="font-size:28px;font-weight:900;color:var(--secondary);">
+                  <div style="font-size:28px;font-weight:900;background:linear-gradient(135deg,#7C4DFF,#FF6B9D);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">
                     {{ teacherAvatar }}
                   </div>
                   <div>
-                    <div style="font-size:14px;font-weight:800;color:var(--text-dark);">{{ user && user.name }}</div>
-                    <div style="font-size:12px;color:var(--text-light);">{{ user && user.class }} · 教师</div>
+                    <div style="font-size:14px;font-weight:800;color:#fff;">{{ user && user.name }}</div>
+                    <div style="font-size:12px;color:rgba(255,255,255,0.5);">教师</div>
                   </div>
                 </div>
-                <div class="avatar-menu-item avatar-menu-logout" @click="doLogout">
+                <div class="avatar-menu-item avatar-menu-logout" @click="doLogout" style="color:rgba(255,255,255,0.7);">
                   <span>🚪</span>
                   <span>退出登录</span>
                 </div>
@@ -1634,20 +1833,36 @@ const TeacherApp = {
         </div>
       </div>
 
+      <!-- 左下角固定按钮组 -->
+      <div style="position:fixed;left:20px;bottom:90px;z-index:999;display:flex;flex-direction:column;gap:8px;">
+        <button @click="scrollToTop" title="回到顶端" style="width:44px;height:44px;border-radius:14px;border:none;background:rgba(124,77,255,0.2);backdrop-filter:blur(8px);color:#a78bfa;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;box-shadow:0 4px 16px rgba(0,0,0,0.3);"
+          onmouseover="this.style.background='rgba(124,77,255,0.4)'" onmouseout="this.style.background='rgba(124,77,255,0.2)'">
+          ⬆
+        </button>
+        <button @click="undoLastOp" title="撤回操作" style="width:44px;height:44px;border-radius:14px;border:none;background:rgba(255,152,0,0.2);backdrop-filter:blur(8px);color:#ffb74d;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;box-shadow:0 4px 16px rgba(0,0,0,0.3);"
+          onmouseover="this.style.background='rgba(255,152,0,0.4)'" onmouseout="this.style.background='rgba(255,152,0,0.2)'">
+          ↩
+        </button>
+        <button @click="showBatchModal" title="批量加减分" style="width:44px;height:44px;border-radius:14px;border:none;background:rgba(33,150,243,0.2);backdrop-filter:blur(8px);color:#64b5f6;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;box-shadow:0 4px 16px rgba(0,0,0,0.3);"
+          onmouseover="this.style.background='rgba(33,150,243,0.4)'" onmouseout="this.style.background='rgba(33,150,243,0.2)'">
+          📊
+        </button>
+      </div>
+
       <!-- 主内容 -->
-      <div class="main-content">
+      <div class="main-content" style="padding-bottom:90px;">
         <teacher-dashboard v-if="currentSection==='dashboard'" :teacher="user" @toast="onToast"></teacher-dashboard>
-        <teacher-students  v-if="currentSection==='students'"  @toast="onToast" @view-as-student="s => $emit('view-as-student', s)"></teacher-students>
+        <teacher-students  v-if="currentSection==='students'" ref="studentsComp" @toast="onToast" @view-as-student="s => $emit('view-as-student', s)"></teacher-students>
         <teacher-analytics v-if="currentSection==='analytics'" @toast="onToast"></teacher-analytics>
         <teacher-rank      v-if="currentSection==='rank'"></teacher-rank>
         <teacher-settings  v-if="currentSection==='settings'"  :user="user" @toast="onToast"></teacher-settings>
       </div>
 
-      <!-- 底部导航栏（与学生端同款） -->
-      <div class="bottom-nav">
+      <!-- 底部导航栏（毛玻璃效果） -->
+      <div class="bottom-nav" style="background:rgba(15,15,30,0.8);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid rgba(255,255,255,0.06);">
         <div v-for="item in navItems" :key="item.key" class="nav-item"
              :class="{active: currentSection===item.key}"
-             @click="navTo(item.key)">
+             @click="navTo(item.key)" style="color:rgba(255,255,255,0.5);">
           <span class="nav-icon">{{ item.icon }}</span>
           <span>{{ item.label }}</span>
         </div>

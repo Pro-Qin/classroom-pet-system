@@ -51,7 +51,7 @@ const TeacherDashboard = {
     <div class="animate-pageIn">
       <div class="teacher-header">
         <div class="teacher-page-title">📊 班级总览</div>
-        <div style="font-size:13px;color:var(--text-light);">{{ teacher.class }} · {{ teacher.name }}</div>
+        <div style="font-size:13px;color:var(--text-light);">{{ teacher.name }}</div>
       </div>
 
       <!-- 统计卡片 -->
@@ -220,7 +220,7 @@ const TeacherStudents = {
       void this._rev;  // 依赖追踪，_rev 变化时强制重算
       const q = this.searchText.toLowerCase();
       const filtered = Store.state.students.filter(s =>
-        s.name.includes(q) || s.username.toLowerCase().includes(q) || (s.class||'').includes(q)
+        s.name.includes(q) || s.username.toLowerCase().includes(q)
       );
       const key = this.sortKey;
       const sorted = [...filtered].sort((a, b) => {
@@ -382,7 +382,7 @@ const TeacherStudents = {
     exportCSV() {
       const headers = ['姓名','账号','班级','积分','宠物','等级','加入日期'];
       const rows = Store.state.students.map(s => [
-        s.name, s.username, s.class||'', s.points||0,
+        s.name, s.username, '', s.points||0,
         s.petName||'-', getLevelInfo(s.petExp||0).name, s.joinDate||'-'
       ]);
       const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
@@ -461,7 +461,7 @@ const TeacherStudents = {
 
       <!-- 搜索 -->
       <div style="position:relative;margin-bottom:12px;">
-        <input class="input-field" v-model="searchText" placeholder="🔍 搜索姓名/账号/班级..." style="padding-left:40px;" />
+        <input class="input-field" v-model="searchText" placeholder="🔍 搜索姓名/账号..." style="padding-left:40px;" />
         <span style="position:absolute;left:14px;top:12px;font-size:16px;">🔍</span>
       </div>
 
@@ -488,7 +488,7 @@ const TeacherStudents = {
             </div>
             <div style="flex:1;min-width:0;">
               <div style="font-size:15px;font-weight:800;">{{ s.name }}</div>
-              <div style="font-size:12px;color:var(--text-light);">{{ s.class }} · {{ s.username }}</div>
+              <div style="font-size:12px;color:var(--text-light);">{{ s.username }}</div>
               <div style="font-size:11px;color:var(--text-light);">加入 {{ s.joinDate }}</div>
             </div>
             <div style="text-align:right;flex-shrink:0;">
@@ -537,7 +537,7 @@ const TeacherStudents = {
           </div>
           <div class="input-group">
             <label>班级</label>
-            <input class="input-field" v-model="newStudent.class" placeholder="例如：三年二班" />
+            <input class="input-field" v-model="newStudent.class" placeholder="选填" style="display:none;" />
           </div>
           <div style="display:flex;gap:10px;">
             <button class="btn btn-ghost" style="flex:1" @click="showAddModal=false">取消</button>
@@ -724,7 +724,7 @@ const TeacherRank = {
             <div style="flex:1;min-width:0;">
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                 <span style="font-size:15px;font-weight:800;">{{ s.name }}</span>
-                <span style="font-size:12px;color:var(--text-light);">{{ s.class }}</span>
+                <span style="font-size:12px;color:var(--text-light);"></span>
                 <span class="badge badge-success" style="font-size:11px;">Lv.{{ s.levelInfo.level }} {{ s.levelInfo.name }}</span>
               </div>
               <div style="display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap;">
@@ -1105,10 +1105,6 @@ const TeacherAnalytics = {
           <h3 style="font-size:18px;font-weight:800;margin-bottom:16px;">{{ selectedStudent.name }} 的详细数据</h3>
           <div style="display:flex;flex-direction:column;gap:12px;">
             <div style="display:flex;justify-content:space-between;">
-              <span style="color:var(--text-light);">班级:</span>
-              <span>{{ selectedStudent.class }}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;">
               <span style="color:var(--text-light);">积分:</span>
               <span style="font-weight:700;color:var(--warning);">⭐{{ selectedStudent.points || 0 }}</span>
             </div>
@@ -1190,9 +1186,8 @@ const TeacherSettings = {
     };
   },
   created() {
-    // 从 localStorage 读取已保存的班级名，兜底用 user.class
-    const saved = localStorage.getItem('className');
-    this.className = saved || this.user?.class || '高一一班';
+      // 从 localStorage 读取已保存的班级名
+    this.className = '未分班';
   },
   methods: {
     saveClassName() {
@@ -1297,10 +1292,9 @@ const TeacherSettings = {
         <button v-if="activeTab !== 'about'" class="btn btn-primary btn-sm" @click="confirmSave">💾 保存设置</button>
       </div>
 
-      <!-- 标签页 -->
+        <!-- 标签页 -->
       <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
         <button class="btn btn-sm" :class="activeTab==='rules'?'btn-primary':'btn-ghost'" @click="activeTab='rules'">⭐ 积分规则</button>
-        <button class="btn btn-sm" :class="activeTab==='class'?'btn-primary':'btn-ghost'" @click="activeTab='class'">🏫 班级设置</button>
         <button class="btn btn-sm" :class="activeTab==='growth'?'btn-primary':'btn-ghost'" @click="activeTab='growth'">🐾 成长规则</button>
         <button class="btn btn-sm" :class="activeTab==='about'?'btn-primary':'btn-ghost'" @click="activeTab='about'">ℹ️ 关于系统</button>
       </div>
@@ -1347,21 +1341,6 @@ const TeacherSettings = {
               <input class="input-field" type="number" v-model.number="pointRules.behavior" min="0" max="40" />
               <span style="font-size:12px;color:var(--text-light);">积分</span>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 班级设置 -->
-      <div v-if="activeTab === 'class'" class="settings-content">
-        <div class="card" style="padding:20px;margin-bottom:20px;">
-          <h3 style="font-size:16px;font-weight:800;margin-bottom:16px;">🏫 班级名称设置</h3>
-          <p style="font-size:13px;color:var(--text-light);margin-bottom:20px;">设置班级名称，将显示在系统各处（如：高一一班）</p>
-          <div class="input-group">
-            <label>班级名称</label>
-            <input class="input-field" v-model="className" placeholder="例如：高一一班" maxlength="20" />
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;">
-            <button class="btn btn-primary" @click="saveClassName">💾 保存班级名称</button>
           </div>
         </div>
       </div>

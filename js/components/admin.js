@@ -86,7 +86,7 @@ const AdminDashboard = {
           </div>
           <span style="font-size:22px;">{{ s.petEmoji }}</span>
           <div style="flex:1;font-weight:700;">{{ s.name }}</div>
-          <div style="font-size:12px;color:var(--text-light);">{{ s.class }}</div>
+          <div style="font-size:12px;color:var(--text-light);"></div>
           <div style="font-weight:800;color:var(--warning);">⭐{{ s.points||0 }}</div>
         </div>
       </div>
@@ -121,7 +121,7 @@ const AdminTeachers = {
       return this.allTeachers.filter(t =>
         t.name.toLowerCase().includes(q) ||
         t.username.toLowerCase().includes(q) ||
-        (t.class || '').includes(q)
+        (t.username || '').includes(q)
       );
     },
   },
@@ -172,7 +172,7 @@ const AdminTeachers = {
 
       <!-- 搜索 -->
       <div style="position:relative;margin-bottom:16px;">
-        <input class="input-field" v-model="searchText" placeholder="🔍 搜索教师姓名/账号/班级..." style="padding-left:40px;" />
+        <input class="input-field" v-model="searchText" placeholder="🔍 搜索教师姓名/账号..." style="padding-left:40px;" />
         <span style="position:absolute;left:14px;top:12px;font-size:16px;">🔍</span>
       </div>
 
@@ -188,7 +188,7 @@ const AdminTeachers = {
               <div style="font-size:15px;font-weight:800;">{{ t.name }}</div>
               <div style="font-size:12px;color:var(--text-light);margin-top:2px;">
                 <span class="badge badge-purple" style="font-size:11px;">{{ t.username }}</span>
-                <span style="margin-left:8px;">🏫 {{ t.class || '未设置班级' }}</span>
+                <span style="margin-left:8px;"></span>
               </div>
               <div style="font-size:11px;color:var(--text-light);margin-top:4px;">加入：{{ t.joinDate || '-' }}</div>
             </div>
@@ -387,7 +387,7 @@ const AdminStudents = {
         .filter(s =>
           s.name.toLowerCase().includes(q) ||
           s.username.toLowerCase().includes(q) ||
-          (s.class || '').includes(q)
+          (s.username || '').includes(q)
         )
         .map(s => ({ ...s, petEmoji: getStudentPetEmoji(s), levelInfo: getLevelInfo(s.petExp || 0) }));
     },
@@ -415,7 +415,7 @@ const AdminStudents = {
       </div>
 
       <div style="position:relative;margin-bottom:16px;">
-        <input class="input-field" v-model="searchText" placeholder="🔍 搜索学生姓名/账号/班级..." style="padding-left:40px;" />
+        <input class="input-field" v-model="searchText" placeholder="🔍 搜索学生姓名/账号..." style="padding-left:40px;" />
         <span style="position:absolute;left:14px;top:12px;font-size:16px;">🔍</span>
       </div>
 
@@ -427,7 +427,6 @@ const AdminStudents = {
               <div style="font-size:15px;font-weight:800;">{{ s.name }}</div>
               <div style="font-size:12px;color:var(--text-light);margin-top:2px;">
                 <span class="badge badge-purple" style="font-size:11px;">{{ s.username }}</span>
-                <span style="margin-left:6px;">{{ s.class }}</span>
               </div>
               <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
                 <span style="color:var(--warning);font-weight:800;font-size:14px;">⭐{{ s.points||0 }}</span>
@@ -474,8 +473,6 @@ const AdminSettings = {
       editConfirmPassword: '',
       showEditPwd: false,
       editError: '',
-      // 班级名称
-      className: localStorage.getItem('className') || '高一一班',
       // 导入结果
       importResult: null,
     };
@@ -571,12 +568,6 @@ ${list.slice(0, 5).map(s => `${s.name}: ${s.pet} ${s.hasImage ? '🖼️' : '�
         this.editError = res.msg || '更新失败';
       }
     },
-    saveClassName() {
-      const name = (this.className || '').trim();
-      if (!name) { Store.toast('请输入班级名称', 'warning'); return; }
-      localStorage.setItem('className', name);
-      Store.toast(`✅ 班级名称已保存为「${name}」`, 'success');
-    },
   },
   mounted() {},
   template: `
@@ -584,15 +575,7 @@ ${list.slice(0, 5).map(s => `${s.name}: ${s.pet} ${s.hasImage ? '🖼️' : '�
       <div class="teacher-page-title" style="margin-bottom:20px;">⚙️ 系统设置</div>
 
       <div class="settings-grid">
-        <!-- 班级名称设置 -->
-        <div class="card" style="padding:20px;">
-          <h3 style="font-size:16px;font-weight:800;margin-bottom:14px;">🏫 班级名称</h3>
-          <p style="font-size:13px;color:var(--text-light);margin-bottom:14px;">设置班级名称，将显示在学生端各处（如：高一一班）</p>
-          <div class="input-group">
-            <label>班级名称</label>
-            <input class="input-field" v-model="className" placeholder="例如：高一一班" maxlength="20" />
-          </div>
-          <button class="btn btn-primary" style="margin-top:12px;" @click="saveClassName">💾 保存班级名称</button>
+        <!-- 系统设置占位 -->
         </div>
 
         <!-- 账号信息 -->

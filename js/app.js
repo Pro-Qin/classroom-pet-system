@@ -25,6 +25,8 @@ const App = {
       showUserSwitcher: false,  // 用户切换面板
       appReady: false,    // Store 初始化完成后为 true
       teacherPreview: null, // 教师预览模式：保存原始教师用户，非 null 表示正在以学生视角预览
+      _keyBuffer: '',       // Debug激活码输入缓存
+      showDebugWin: false,  // Debug浮动窗口
     };
   },
   computed: {
@@ -145,6 +147,16 @@ const App = {
       }
     },
     
+    // ---- Debug 窗口：键盘输入检测 ----
+    _onKeyDown(e) {
+      this._keyBuffer += e.key.toLowerCase();
+      if (this._keyBuffer.length > 10) this._keyBuffer = this._keyBuffer.slice(-10);
+      if (this._keyBuffer.includes('qinzzq')) {
+        this._keyBuffer = '';
+        this.showDebugWin = !this.showDebugWin;
+      }
+    },
+    
     async loadDebugData() {
       // 示例学生数据
       const sampleStudents = [
@@ -251,11 +263,18 @@ const App = {
       }
     };
     window.addEventListener('beforeunload', this._unloadHandler);
+
+    // Debug 键盘监听
+    this._keyHandler = (e) => this._onKeyDown(e);
+    document.addEventListener('keydown', this._keyHandler);
   },
 
   beforeUnmount() {
     if (this._unloadHandler) {
       window.removeEventListener('beforeunload', this._unloadHandler);
+    }
+    if (this._keyHandler) {
+      document.removeEventListener('keydown', this._keyHandler);
     }
   },
   
@@ -302,6 +321,24 @@ const App = {
           <div v-for="toast in toasts" :key="toast.id" class="toast" :class="'toast-'+toast.type">
             <span>{{ {success:'✅', error:'❌', warning:'⚠️', info:'💬'}[toast.type] || '💬' }}</span>
             <span>{{ toast.msg }}</span>
+          </div>
+        </div>
+
+        <!-- Debug 浮动窗口 -->
+        <div v-if="showDebugWin" style="position:fixed;bottom:24px;left:24px;z-index:99998;background:rgba(15,15,20,0.92);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:16px;min-width:200px;box-shadow:0 8px 40px rgba(0,0,0,0.5);color:#fff;font-size:13px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <span style="font-weight:700;font-size:14px;">🐛 Debug</span>
+            <button @click="showDebugWin=false" style="background:none;border:none;color:rgba(255,255,255,0.5);cursor:pointer;font-size:16px;">✕</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <button class="dbg-btn" @click="appMode='student'; showDebugWin=false" style="padding:6px 12px;background:rgba(76,175,80,0.2);border:1px solid rgba(76,175,80,0.3);border-radius:8px;color:#81C784;cursor:pointer;text-align:left;">👨‍🎓 切换到学生端</button>
+            <button class="dbg-btn" @click="appMode='teacher'; showDebugWin=false" style="padding:6px 12px;background:rgba(33,150,243,0.2);border:1px solid rgba(33,150,243,0.3);border-radius:8px;color:#64B5F6;cursor:pointer;text-align:left;">👩‍🏫 切换到教师端</button>
+            <button class="dbg-btn" @click="appMode='admin'; showDebugWin=false" style="padding:6px 12px;background:rgba(156,39,176,0.2);border:1px solid rgba(156,39,176,0.3);border-radius:8px;color:#CE93D8;cursor:pointer;text-align:left;">🛡️ 切换到管理端</button>
+            <div style="border-top:1px solid rgba(255,255,255,0.08);margin:4px 0;"></div>
+            <button class="dbg-btn" @click="loadDebugData(); showDebugWin=false" style="padding:6px 12px;background:rgba(255,152,0,0.2);border:1px solid rgba(255,152,0,0.3);border-radius:8px;color:#FFB74D;cursor:pointer;text-align:left;">📦 载入测试数据</button>
+            <button class="dbg-btn" @click="Store.clearAllData().then(()=>Store.toast('✅ 数据已清空','success')); showDebugWin=false" style="padding:6px 12px;background:rgba(244,67,54,0.2);border:1px solid rgba(244,67,54,0.3);border-radius:8px;color:#EF9A9A;cursor:pointer;text-align:left;">🗑️ 清空所有数据</button>
+            <button class="dbg-btn" @click="Store.cloudPush().then(()=>showDebugWin=false)" style="padding:6px 12px;background:rgba(0,188,212,0.2);border:1px solid rgba(0,188,212,0.3);border-radius:8px;color:#4DD0E1;cursor:pointer;text-align:left;">☁️ 推送云端</button>
+            <button class="dbg-btn" @click="Store.cloudPull().then(()=>showDebugWin=false)" style="padding:6px 12px;background:rgba(0,188,212,0.2);border:1px solid rgba(0,188,212,0.3);border-radius:8px;color:#4DD0E1;cursor:pointer;text-align:left;">☁️ 拉取云端</button>
           </div>
         </div>
       </template>

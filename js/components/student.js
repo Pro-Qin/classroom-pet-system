@@ -951,7 +951,7 @@ const RankPage = {
             {{ s.name }}
             <span v-if="s.id === student.id" style="font-size:11px;color:var(--primary);"> (我)</span>
           </div>
-          <div class="rank-detail">Lv.{{ s.levelInfo.level }} {{ s.levelInfo.name }} · {{ s.class }} · {{ s.petExp||0 }} exp</div>
+          <div class="rank-detail">Lv.{{ s.levelInfo.level }} {{ s.levelInfo.name }} · {{ s.petExp||0 }} exp</div>
         </div>
         <div class="rank-points">⭐{{ s.points }}</div>
       </div>
@@ -1741,7 +1741,7 @@ const StudentApp = {
                       </div>
                       <!-- 名字 -->
                       <div class="picker-card-name">{{ s.name }}</div>
-                      <div class="picker-card-class">{{ s.class }}</div>
+                      <div class="picker-card-class"></div>
                     </div>
                   </div>
                 </div>
@@ -1840,7 +1840,7 @@ const StudentApp = {
                   </div>
                   <div>
                     <div style="font-size:14px;font-weight:800;color:var(--text-dark);">{{ student && student.name }}</div>
-                    <div style="font-size:12px;color:var(--text-light);">{{ student && student.class }}</div>
+                    <div style="font-size:12px;color:var(--text-light);"></div>
                   </div>
                 </div>
                 <div class="avatar-menu-item" @click="showAvatarUpload=true;showAvatarMenu=false">

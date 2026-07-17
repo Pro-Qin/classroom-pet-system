@@ -1,7 +1,7 @@
 // ===== Supabase 云端同步模块 =====
 // 配置信息（用户提供的 Supabase 项目）
-const SUPABASE_URL = 'https://vkjhwawfsmbgkecinylz.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_YJDC9xTY1CFTiwCDBhwJnA_eb_0W3PK';
+const SUPABASE_URL = 'https://oprbqzfqqvwkymhucrgg.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_C4kDwfUEp9268V_B0jwACA_mrANddhz';
 
 
 // Supabase 客户端单例

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>环境准备中 - 课堂宠物系统</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg,#0f0c29,#1a1a3e,#24243e);
+  color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+}
+.card {
+  background: rgba(255,255,255,0.05); backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 24px;
+  padding: 40px; max-width: 480px; width: 90%; text-align: center;
+}
+.icon { font-size: 48px; margin-bottom: 16px; }
+h1 { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+p { font-size: 14px; color: rgba(255,255,255,0.6); margin-bottom: 24px; line-height: 1.6; }
+.bar-track { width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 6px; overflow: hidden; margin-bottom: 12px; }
+.bar { height: 100%; width: 0%; background: linear-gradient(90deg,#7C4DFF,#FF6B9D); border-radius: 6px; transition: width 0.5s ease; }
+.status { font-size: 13px; color: rgba(255,255,255,0.5); min-height: 20px; }
+.done { color: #81C784; }
+.error { color: #EF9A9A; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon" id="icon">⚙️</div>
+  <h1 id="title">环境准备中</h1>
+  <p id="desc">正在检测系统环境，请稍候...</p>
+  <div class="bar-track"><div class="bar" id="progressBar"></div></div>
+  <div class="status" id="statusText">正在初始化...</div>
+</div>
+<script>
+async function pollStatus() {
+  try {
+    const resp = await fetch('setup_status.json?' + Date.now());
+    if (!resp.ok) { setTimeout(pollStatus, 500); return; }
+    const data = await resp.json();
+    document.getElementById('progressBar').style.width = (data.progress || 0) + '%';
+    document.getElementById('statusText').textContent = data.status || '';
+    if (data.done) {
+      document.getElementById('icon').textContent = '✅';
+      document.getElementById('title').textContent = '准备完成！';
+      document.getElementById('title').className = 'done';
+      setTimeout(() => { window.location.href = data.redirect || 'index.html'; }, 1500);
+      return;
+    }
+    if (data.error) {
+      document.getElementById('icon').textContent = '❌';
+      document.getElementById('title').textContent = '出错了';
+      document.getElementById('title').className = 'error';
+      document.getElementById('desc').textContent = data.error;
+      return;
+    }
+  } catch(e) {}
+  setTimeout(pollStatus, 800);
+}
+pollStatus();
+</script>
+</body>
+</html>

@@ -2012,9 +2012,13 @@ const Store = {
   // ---- 版本与更新检测 ----
   async checkForUpdate() {
     try {
-      const resp = await fetch('https://gitee.com/am-zzq/classroom-pet-system/raw/master/version.json', { 
+      const resp = await fetch('https://gitee.com/am-zzq/classroom-pet-system/raw/master/version.json', {
         cache: 'no-cache',
-        signal: AbortSignal.timeout(5000)
+        signal: (function() {
+          try { return AbortSignal.timeout(5000); } catch(e) {
+            var c = new AbortController(); setTimeout(function() { c.abort(); }, 5000); return c.signal;
+          }
+        })()
       });
       if (!resp.ok) return null;
       const remote = await resp.json();

@@ -1,37 +1,39 @@
 @echo off
-chcp 65001 >nul
-title 课堂电子宠物系统
+title Classroom Pet System - Launcher
 
 echo ====================================
-echo    课堂电子宠物系统 启动器
+echo   Classroom Pet System Launcher
 echo ====================================
 echo.
 
-:: 获取当前目录
-set "CURRENT_DIR=%~dp0"
+cd /d "%~dp0"
 
-:: 检查 Python
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo [!] 未检测到 Python，尝试直接打开 index.html...
-    start "" "%CURRENT_DIR%index.html"
-    goto :end
+:: Check requirements
+where python >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [WARNING] Python not found. Opening index.html directly...
+    echo Some features (sync, update check) may not work.
+    echo.
+    start "" "index.html"
+    echo Press any key to exit...
+    pause >nul
+    exit /b
 )
 
-:: 启动 HTTP 服务器（当前窗口，不另开终端）
-echo [1/2] 启动本地服务器（端口 5500）...
+:: Start HTTP server in current directory
+echo [1/2] Starting server on http://localhost:5500 ...
 echo.
-echo    服务器地址: http://localhost:5500/
-echo    关闭此窗口即可停止服务器
+echo   Server: http://localhost:5500/
+echo   Close this window to stop the server.
 echo.
 
-:: 启动浏览器（自动打开）
+:: Wait a moment then open browser
+ping 127.0.0.1 -n 3 >nul
 start "" http://localhost:5500/
 
-:: 在前台运行服务器（-m http.server 的简单方式）
-python -m http.server 5500 --directory "%CURRENT_DIR%"
+:: Run server (foreground, single window)
+python -m http.server 5500
 
-:end
 echo.
-echo 按任意键退出...
+echo Server stopped. Press any key to exit...
 pause >nul

@@ -25,6 +25,60 @@
   </style>
 </head>
 <body>
+  <!-- 粒子背景 Canvas -->
+  <canvas id="particle-bg" style="position:fixed;inset:0;z-index:0;pointer-events:none;"></canvas>
+  <script>
+  (function() {
+    var canvas = document.getElementById('particle-bg');
+    var ctx = canvas.getContext('2d');
+    var particles = [];
+    var W, H;
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+    var COUNT = Math.min(60, Math.floor(W * H / 15000));
+    for (var i = 0; i < COUNT; i++) {
+      particles.push({
+        x: Math.random() * W, y: Math.random() * H,
+        vx: (Math.random() - 0.5) * 0.6,
+        vy: (Math.random() - 0.5) * 0.6,
+        r: Math.random() * 1.5 + 0.5
+      });
+    }
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      for (var i = 0; i < COUNT; i++) {
+        var p = particles[i];
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > W) p.vx *= -1;
+        if (p.y < 0 || p.y > H) p.vy *= -1;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.fill();
+        for (var j = i + 1; j < COUNT; j++) {
+          var q = particles[j];
+          var dx = p.x - q.x, dy = p.y - q.y;
+          var dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 120) {
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(q.x, q.y);
+            ctx.strokeStyle = 'rgba(255,255,255,' + (1 - dist / 120) * 0.25 + ')';
+            ctx.lineWidth = 0.6;
+            ctx.stroke();
+          }
+        }
+      }
+      requestAnimationFrame(draw);
+    }
+    draw();
+  })();
+  </script>
+
   <!-- 加载画面：独立于 Vue，确保页面打开立即显示 -->
   <div id="loading-splash">
     <div class="splash-icon">🐾</div>

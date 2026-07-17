@@ -44,15 +44,14 @@ const PetPage = {
       return PET_TYPES;
     },
     mood() {
-      // 计算排名百分比（用于心情调节）
-      const students = [...Store.state.students].filter(s => !s._isPlaceholder).sort((a, b) => (b.points||0) - (a.points||0));
-      const idx = students.findIndex(s => s.id === this.student.id);
-      if (idx >= 0 && students.length > 0) {
-        this.student._rankPercent = 1 - (idx / students.length);
-      } else {
-        this.student._rankPercent = 0.5;
-      }
-      return getStudentMood(this.student.petStatus, this.student);
+      // 计算排名百分比（用于心情调节，不修改 student 对象避免 computed 副作用）
+      const _rankPercent = (() => {
+        const allStudents = [...Store.state.students].filter(s => !s._isPlaceholder).sort((a, b) => (b.points||0) - (a.points||0));
+        const idx = allStudents.findIndex(s => s.id === this.student.id);
+        if (idx >= 0 && allStudents.length > 0) return 1 - (idx / allStudents.length);
+        return 0.5;
+      })();
+      return getStudentMood(this.student.petStatus, { ...this.student, _rankPercent });
     },
     // 心情原因
     moodReason() {

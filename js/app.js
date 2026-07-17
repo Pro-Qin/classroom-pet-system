@@ -58,6 +58,7 @@ const App = {
     // 登录成功处理
     onLoginSuccess(user) {
       this.currentUser = user;
+      window.__currentUser = user; // 供日志系统使用
       this.isLoggedIn = true;
       
       // 根据用户角色设置显示模式
@@ -180,6 +181,20 @@ const App = {
       this.showWelcome = false;
       localStorage.setItem('_welcomeShown', '1');
     },
+
+    // ---- 数据冲突处理 ----
+    resolveConflictUseLocal() {
+      Store.state._syncConflict = false;
+      Store.cloudPush().then(r => {
+        Store.toast('☁️ ' + r.msg, 'success');
+      });
+    },
+    resolveConflictUseCloud() {
+      Store.state._syncConflict = false;
+      Store.cloudPull().then(r => {
+        if (r.success) Store.toast('☁️ ' + r.msg, 'success');
+      });
+    },
     
     async loadDebugData() {
       // 示例学生数据
@@ -234,6 +249,7 @@ const App = {
           
         if (user) {
           this.currentUser = { ...user, role: userData.role };
+          window.__currentUser = { ...user, role: userData.role };
           this.isLoggedIn = true;
           this.appMode = userData.role;
         }
@@ -294,13 +310,19 @@ const App = {
       setTimeout(() => splash.remove(), 500);
     }
 
-    // 关闭/刷新页面时自动推送操作记录到云端
+    // 关闭/刷新页面时自动推送操作记录到云端，并确保IndexedDB写入完毕
     this._unloadHandler = () => {
       const logs = Store.state.auditLog;
       if (logs && logs.length > 0) {
-        // 使用 sendBeacon 或同步方式推送（fetch keep-alive）
         CloudSync.pushAuditLog(logs).catch(() => {});
       }
+      // 强制立即写入IndexedDB（同步方式在beforeunload中不可靠，但尽力而为）
+      try {
+        if (Store._dbWritePending) {
+          clearTimeout(Store._dbWriteTimer);
+          Store._flushDbWrite();
+        }
+      } catch(e) {}
     };
     window.addEventListener('beforeunload', this._unloadHandler);
 
@@ -379,6 +401,28 @@ const App = {
             <button class="dbg-btn" @click="Store.clearAllData().then(()=>Store.toast('✅ 数据已清空','success')); showDebugWin=false" style="padding:6px 12px;background:rgba(244,67,54,0.2);border:1px solid rgba(244,67,54,0.3);border-radius:8px;color:#EF9A9A;cursor:pointer;text-align:left;">🗑️ 清空所有数据</button>
             <button class="dbg-btn" @click="Store.cloudPush().then(()=>showDebugWin=false)" style="padding:6px 12px;background:rgba(0,188,212,0.2);border:1px solid rgba(0,188,212,0.3);border-radius:8px;color:#4DD0E1;cursor:pointer;text-align:left;">☁️ 推送云端</button>
             <button class="dbg-btn" @click="Store.cloudPull().then(()=>showDebugWin=false)" style="padding:6px 12px;background:rgba(0,188,212,0.2);border:1px solid rgba(0,188,212,0.3);border-radius:8px;color:#4DD0E1;cursor:pointer;text-align:left;">☁️ 拉取云端</button>
+          </div>
+        </div>
+
+        <!-- 数据冲突弹窗 -->
+        <div v-if="isLoggedIn && Store.state._syncConflict" style="position:fixed;inset:0;z-index:99990;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;">
+          <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:20px;padding:28px;max-width:380px;width:90%;color:#fff;border:1px solid rgba(255,255,255,0.1);box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+            <div style="font-size:40px;text-align:center;margin-bottom:12px;">⚡</div>
+            <h3 style="font-size:18px;font-weight:800;text-align:center;margin:0 0 8px;">检测到数据冲突</h3>
+            <p style="font-size:13px;color:rgba(255,255,255,0.6);text-align:center;margin-bottom:20px;line-height:1.5;">
+              本地数据和云端数据不一致，请选择如何处理：
+            </p>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <button @click="resolveConflictUseLocal" style="padding:12px 20px;border-radius:12px;border:1px solid rgba(76,175,80,0.3);background:rgba(76,175,80,0.15);color:#81C784;font-weight:700;font-size:14px;cursor:pointer;transition:transform 0.1s;">
+                📤 使用本地数据（推送覆盖云端）
+              </button>
+              <button @click="resolveConflictUseCloud" style="padding:12px 20px;border-radius:12px;border:1px solid rgba(33,150,243,0.3);background:rgba(33,150,243,0.15);color:#64B5F6;font-weight:700;font-size:14px;cursor:pointer;transition:transform 0.1s;">
+                📥 使用云端数据（拉取覆盖本地）
+              </button>
+            </div>
+            <div style="text-align:center;margin-top:12px;">
+              <button @click="Store.state._syncConflict=false" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:12px;">稍后处理</button>
+            </div>
           </div>
         </div>
 

@@ -253,23 +253,28 @@ const Store = {
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
   },
 
-  // ---- 操作日志：写入一条 ----
+  // ---- 操作日志：写入一条（增强版）----
   _logAudit(action, detail, snapshot) {
+    // 获取当前登录用户信息（从 app.js 的 currentUser 或 Store.state）
+    const currentUser = window.__currentUser || {};
     const entry = {
       id: Date.now() + Math.random(),
       time: new Date().toLocaleString('zh-CN'),
-      action,      // 操作类型，如 '删除学生'
-      detail,      // 操作详情，如 '删除了 小明（id:123）'
-      snapshot,    // 快照数据（用于回退），可为 null
+      isoTime: new Date().toISOString(),
+      action,           // 操作类型，如 '删除学生'
+      detail,           // 操作详情，如 '删除了 小明（id:123）'
+      snapshot,         // 快照数据（用于回退），可为 null
+      operatorId: currentUser.id || null,
+      operatorRole: currentUser.role || 'system',
+      operatorName: currentUser.name || '系统',
+      deviceInfo: navigator.userAgent ? navigator.userAgent.slice(0, 120) : 'unknown',
     };
-    this.state.auditLog.unshift(entry); // 最新在前
-    if (this.state.auditLog.length > 1000) this.state.auditLog.pop(); // 最多保留1000条
+    this.state.auditLog.unshift(entry);
+    if (this.state.auditLog.length > 1000) this.state.auditLog.pop();
     this.state.auditLogRev++;
-    // 持久化到 localStorage（本地备份，最多存200条）
     try {
       localStorage.setItem('auditLog', JSON.stringify(this.state.auditLog.slice(0, 200)));
     } catch(e) {}
-    // 异步推送到云端（不阻塞）
     CloudSync.pushAuditLog(this.state.auditLog).catch(() => {});
   },
 
@@ -454,6 +459,38 @@ const Store = {
     this._pushTimer = setTimeout(() => {
       this.cloudPush().catch(e => console.warn('[Store] 自动推送失败:', e));
     }, 3000);
+  },
+
+  // ---- 防抖 IndexedDB 写入（500ms内多次变更只写一次）----
+  _dbWriteTimer: null,
+  _dbWritePending: false,
+  _scheduleDbWrite(immediate = false) {
+    if (immediate) {
+      // 关键数据：立即写入
+      clearTimeout(this._dbWriteTimer);
+      this._dbWritePending = false;
+      this._flushDbWrite();
+      return;
+    }
+    if (!this._dbWritePending) {
+      this._dbWritePending = true;
+      this._dbWriteTimer = setTimeout(() => {
+        this._dbWritePending = false;
+        this._flushDbWrite();
+      }, 500);
+    }
+  },
+  async _flushDbWrite() {
+    try {
+      if (this.state.students.length > 0) {
+        await dbStorage.storeStudents(this.state.students);
+      }
+      if (this.state.tasks.length > 0) {
+        await dbStorage.storeTasks(this.state.tasks);
+      }
+    } catch (e) {
+      console.warn('[Store] IndexedDB写入失败:', e);
+    }
   },
 
   // ---- 后台自动检测云端同步冲突（页面加载时调用，不阻塞）----
@@ -1679,8 +1716,9 @@ const Store = {
     }
   },
 
-  // ---- 离线惩罚检测（登录时触发）----
+  // ---- 离线惩罚检测 + 宠物状态时间差同步（登录时触发）----
   // 阶梯积分扣减：24h→-10, 48h→-30, 72h→-60, 96h→-100, 120h→-150, 144h→-200, 336h(14天)→死亡+清零
+  // 同时根据时间差自动衰减宠物状态（多端同步用）
   async checkDailyPenalty(studentId) {
     try {
       const student = this.state.students.find(s => s.id === studentId);
@@ -1700,7 +1738,33 @@ const Store = {
 
       const hoursMissed = Math.floor((now - lastLogin) / (1000 * 60 * 60));
       
-      if (hoursMissed < 24) return null;
+      // ===== 宠物状态时间差衰减（无论是否达到惩罚门槛都执行）=====
+      if (hoursMissed > 0) {
+        const status = student.petStatus || { health: 100, hungry: 100, happy: 100, clean: 100 };
+        // 衰减速率：每小时衰减（模拟自然消耗）
+        const decayHungry  = hoursMissed * 1.5;
+        const decayHappy   = hoursMissed * 0.8;
+        const decayClean   = hoursMissed * 0.8;
+        status.hungry = Math.max(0, Math.round((status.hungry || 100) - decayHungry));
+        status.happy  = Math.max(0, Math.round((status.happy  || 100) - decayHappy));
+        status.clean  = Math.max(0, Math.round((status.clean  || 100) - decayClean));
+        // 饥饿或过脏时健康下降
+        if ((status.hungry < 30 || status.clean < 30) && hoursMissed > 2) {
+          const healthDecay = Math.floor(hoursMissed * 0.5);
+          status.health = Math.max(1, Math.round((status.health || 100) - healthDecay));
+        }
+        student.petStatus = status;
+        this._logAudit('宠物状态同步', `「${student.name}」离线 ${hoursMissed}h 后自动同步状态（hungry:${status.hungry}, happy:${status.happy}, clean:${status.clean}, health:${status.health}）`, null);
+      }
+
+      if (hoursMissed < 24) {
+        // 不足24小时：只更新状态，不扣分，但持久化状态变化
+        if (!DEBUG_MODE) {
+          await dbStorage.storeStudents(this.state.students);
+          this._scheduleCloudPush();
+        }
+        return { synced: true, hoursMissed, status: student.petStatus };
+      }
 
       const daysMissed = Math.floor(hoursMissed / 24);
       let pointPenalty = 0;

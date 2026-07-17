@@ -27,6 +27,9 @@ const App = {
       teacherPreview: null, // 教师预览模式：保存原始教师用户，非 null 表示正在以学生视角预览
       _keyBuffer: '',       // Debug激活码输入缓存
       showDebugWin: false,  // Debug浮动窗口
+      showWelcome: false,   // 欢迎引导窗口
+      welcomeStep: 1,       // 引导步骤（1-4）
+      totalWelcomeSteps: 4,
     };
   },
   computed: {
@@ -156,6 +159,27 @@ const App = {
         this.showDebugWin = !this.showDebugWin;
       }
     },
+
+    // ---- 欢迎引导 ----
+    startWelcome() {
+      this.showWelcome = true;
+      this.welcomeStep = 1;
+    },
+    nextWelcomeStep() {
+      if (this.welcomeStep < this.totalWelcomeSteps) {
+        this.welcomeStep++;
+      } else {
+        this.showWelcome = false;
+        localStorage.setItem('_welcomeShown', '1');
+      }
+    },
+    prevWelcomeStep() {
+      if (this.welcomeStep > 1) this.welcomeStep--;
+    },
+    closeWelcome() {
+      this.showWelcome = false;
+      localStorage.setItem('_welcomeShown', '1');
+    },
     
     async loadDebugData() {
       // 示例学生数据
@@ -246,6 +270,11 @@ const App = {
 
     // 恢复登录状态（数据已就绪）
     this.restoreLoginState();
+
+    // 首次使用显示欢迎引导
+    if (!localStorage.getItem('_welcomeShown')) {
+      setTimeout(() => this.startWelcome(), 600);
+    }
 
     // 淡出加载画面
     const splash = document.getElementById('loading-splash');
@@ -339,6 +368,69 @@ const App = {
             <button class="dbg-btn" @click="Store.clearAllData().then(()=>Store.toast('✅ 数据已清空','success')); showDebugWin=false" style="padding:6px 12px;background:rgba(244,67,54,0.2);border:1px solid rgba(244,67,54,0.3);border-radius:8px;color:#EF9A9A;cursor:pointer;text-align:left;">🗑️ 清空所有数据</button>
             <button class="dbg-btn" @click="Store.cloudPush().then(()=>showDebugWin=false)" style="padding:6px 12px;background:rgba(0,188,212,0.2);border:1px solid rgba(0,188,212,0.3);border-radius:8px;color:#4DD0E1;cursor:pointer;text-align:left;">☁️ 推送云端</button>
             <button class="dbg-btn" @click="Store.cloudPull().then(()=>showDebugWin=false)" style="padding:6px 12px;background:rgba(0,188,212,0.2);border:1px solid rgba(0,188,212,0.3);border-radius:8px;color:#4DD0E1;cursor:pointer;text-align:left;">☁️ 拉取云端</button>
+          </div>
+        </div>
+
+        <!-- 欢迎引导窗口 -->
+        <div v-if="showWelcome" style="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;">
+          <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);border-radius:24px;padding:36px;max-width:440px;width:90%;box-shadow:0 24px 80px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.08);color:#fff;">
+            <!-- 步骤指示器 -->
+            <div style="display:flex;justify-content:center;gap:8px;margin-bottom:24px;">
+              <div v-for="i in totalWelcomeSteps" :key="i" :style="'width:32px;height:4px;border-radius:4px;'+(i===welcomeStep?'background:linear-gradient(90deg,#7C4DFF,#FF6B9D)':'background:rgba(255,255,255,0.15)')"></div>
+            </div>
+
+            <!-- 步骤1：欢迎 -->
+            <div v-if="welcomeStep===1" style="text-align:center;">
+              <div style="font-size:56px;margin-bottom:16px;">🐾</div>
+              <h2 style="font-size:22px;font-weight:800;margin:0 0 12px;">欢迎使用课堂宠物系统</h2>
+              <p style="font-size:14px;color:rgba(255,255,255,0.6);line-height:1.6;">把学习变成养宠物！<br>学生完成课堂任务赚积分 → 购买道具 → 养成专属宠物<br>让每节课都充满成就感！</p>
+            </div>
+
+            <!-- 步骤2：教师端 -->
+            <div v-if="welcomeStep===2" style="text-align:center;">
+              <div style="font-size:56px;margin-bottom:16px;">👩‍🏫</div>
+              <h2 style="font-size:22px;font-weight:800;margin:0 0 12px;">教师端功能</h2>
+              <div style="text-align:left;font-size:14px;color:rgba(255,255,255,0.7);line-height:1.8;">
+                <div>⭐ 发布与管理课堂任务</div>
+                <div>⭐ 审核学生提交的作业</div>
+                <div>⭐ 手动加减分操作</div>
+                <div>⭐ 查看积分排行榜</div>
+                <div>⭐ 批量管理和导出数据</div>
+              </div>
+            </div>
+
+            <!-- 步骤3：学生端 -->
+            <div v-if="welcomeStep===3" style="text-align:center;">
+              <div style="font-size:56px;margin-bottom:16px;">👨‍🎓</div>
+              <h2 style="font-size:22px;font-weight:800;margin:0 0 12px;">学生端功能</h2>
+              <div style="text-align:left;font-size:14px;color:rgba(255,255,255,0.7);line-height:1.8;">
+                <div>🐾 领养并命名专属宠物</div>
+                <div>📋 查看和提交课堂任务</div>
+                <div>🏆 班级积分排行榜</div>
+                <div>🎒 背包系统使用道具</div>
+                <div>📷 上传自定义头像</div>
+              </div>
+            </div>
+
+            <!-- 步骤4：宠物系统 -->
+            <div v-if="welcomeStep===4" style="text-align:center;">
+              <div style="font-size:56px;margin-bottom:16px;">🐉</div>
+              <h2 style="font-size:22px;font-weight:800;margin:0 0 12px;">宠物养成说明</h2>
+              <p style="font-size:14px;color:rgba(255,255,255,0.6);line-height:1.6;">宠物拥有<b>生命、饱食、心情、清洁</b>四项状态<br>使用道具可以提升状态<br>完成任务获得积分和经验<br>宠物会随经验值提升而进化成长！</p>
+              <div style="margin-top:16px;font-size:13px;color:rgba(255,255,255,0.4);">💡 记得经常登录照料你的宠物哦~</div>
+            </div>
+
+            <!-- 底部按钮 -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:28px;">
+              <button v-if="welcomeStep>1" @click="prevWelcomeStep" style="background:none;border:none;color:rgba(255,255,255,0.5);cursor:pointer;font-size:14px;padding:8px;">← 上一步</button>
+              <div v-else></div>
+              <button @click="nextWelcomeStep" style="background:linear-gradient(135deg,#7C4DFF,#FF6B9D);border:none;color:#fff;padding:10px 28px;border-radius:12px;font-weight:700;font-size:15px;cursor:pointer;transition:transform 0.15s;">
+                {{ welcomeStep===totalWelcomeSteps ? '🚀 开始使用' : '下一步 →' }}
+              </button>
+            </div>
+            <div style="text-align:center;margin-top:12px;">
+              <button @click="closeWelcome" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:12px;">跳过引导</button>
+            </div>
           </div>
         </div>
       </template>

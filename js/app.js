@@ -282,6 +282,28 @@ const App = {
       statusEl.textContent = '⚠️ 加载超时，部分数据可能不完整';
     }
 
+    // 阶段3：检查更新（在加载画面中显示，2秒超时不阻塞）
+    if (statusEl) statusEl.textContent = '正在检查更新...';
+    let hasUpdate = false;
+    try {
+      const updateResult = await Promise.race([
+        Store.checkForUpdate(),
+        new Promise(r => setTimeout(() => r(null), 2000))
+      ]);
+      if (updateResult && updateResult.hasUpdate) {
+        hasUpdate = true;
+        if (statusEl) statusEl.textContent = `🔄 发现新版本 v${updateResult.remote}`;
+        // 延迟一点让用户看到更新提示
+        await new Promise(r => setTimeout(r, 800));
+      } else {
+        if (statusEl) statusEl.textContent = '已是最新版本 ✓';
+        await new Promise(r => setTimeout(r, 300));
+      }
+    } catch (e) {
+      if (statusEl) statusEl.textContent = '数据加载完成 ✓';
+      await new Promise(r => setTimeout(r, 200));
+    }
+
     this.appReady = true;
 
     // 恢复登录状态（数据已就绪）
@@ -292,16 +314,17 @@ const App = {
       setTimeout(() => this.startWelcome(), 600);
     }
 
-    // 后台检查更新（不阻塞）
-    setTimeout(async () => {
-      try {
-        const result = await Store.checkForUpdate();
-        if (result && result.hasUpdate) {
-          Store.toast(`🔄 发现新版本 v${result.remote}，建议刷新页面获取更新`, 'info');
-          // 15秒后再次提示，或放在一个不明显的位置
-        }
-      } catch(e) {}
-    }, 3000);
+    // 如果有更新，通过toast再提醒一次（让用户登录后也能看到）
+    if (hasUpdate) {
+      setTimeout(async () => {
+        try {
+          const result = await Store.checkForUpdate();
+          if (result && result.hasUpdate) {
+            Store.toast(`🔄 发现新版本 v${result.remote}，建议刷新页面获取更新`, 'info', 8000);
+          }
+        } catch(e) {}
+      }, 5000);
+    }
 
     // 淡出加载画面
     const splash = document.getElementById('loading-splash');

@@ -462,14 +462,22 @@ function getStudentMood(status, student) {
   if (clean < 20) return PET_MOODS.sad;
   if (happy < 40) return PET_MOODS.sad;
   
+  // 排名调节：计算排名得分（0~1）
+  let rankBonus = 0;
+  if (student && student._rankPercent !== undefined) {
+    rankBonus = (student._rankPercent - 0.5) * 20; // 排名前50%加成，后50%减成
+  }
+  const adjustedHappy = happy + rankBonus;
+  const adjustedHealth = health + (rankBonus > 0 ? rankBonus * 0.5 : 0);
+  
   // 所有状态都好时，才显示正面心情
-  if (health >= 70 && hungry >= 60 && happy >= 70 && clean >= 60) {
-    if (happy > 85) return PET_MOODS.excited;
-    if (happy > 70) return PET_MOODS.happy;
+  if (adjustedHealth >= 70 && hungry >= 60 && adjustedHappy >= 70 && clean >= 60) {
+    if (adjustedHappy > 85) return PET_MOODS.excited;
+    if (adjustedHappy > 70) return PET_MOODS.happy;
   }
   
   // 状态一般时
-  if (happy < 60) return PET_MOODS.normal;
+  if (adjustedHappy < 60) return PET_MOODS.normal;
   
   return PET_MOODS.normal;
 }

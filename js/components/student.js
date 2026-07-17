@@ -44,6 +44,14 @@ const PetPage = {
       return PET_TYPES;
     },
     mood() {
+      // 计算排名百分比（用于心情调节）
+      const students = [...Store.state.students].filter(s => !s._isPlaceholder).sort((a, b) => (b.points||0) - (a.points||0));
+      const idx = students.findIndex(s => s.id === this.student.id);
+      if (idx >= 0 && students.length > 0) {
+        this.student._rankPercent = 1 - (idx / students.length);
+      } else {
+        this.student._rankPercent = 0.5;
+      }
       return getStudentMood(this.student.petStatus, this.student);
     },
     // 心情原因

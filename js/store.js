@@ -452,6 +452,21 @@ const Store = {
     }
   },
 
+  // ---- 获取学生排名经验倍率（排名越高倍率越高）----
+  _getRankMultiplier(studentId) {
+    const ranked = [...this.state.students]
+      .filter(s => !s._isPlaceholder)
+      .sort((a, b) => (b.points || 0) - (a.points || 0));
+    const total = ranked.length;
+    if (total <= 1) return 1.5;
+    const idx = ranked.findIndex(s => s.id === studentId);
+    if (idx === -1) return 1.0;
+    // topMultiplier=2.0（第1名）, bottomMultiplier=0.5（末名）
+    const topM = 2.0, bottomM = 0.5;
+    const ratio = bottomM + (topM - bottomM) * ((total - 1 - idx) / (total - 1));
+    return Math.round(ratio * 100) / 100;
+  },
+
   // ---- 防抖云端推送（每次数据变更后调度，3秒内多次变更只推一次）----
   _pushTimer: null,
   _scheduleCloudPush() {
@@ -814,9 +829,11 @@ const Store = {
 
         student.petStatus = status;
 
-        // 增加宠物经验
+        // 增加宠物经验（按排名加成）
         if (item.effect.exp) {
-          student.petExp = (student.petExp || 0) + item.effect.exp;
+          const rankMultiplier = this._getRankMultiplier(student.id);
+          const bonusExp = Math.round(item.effect.exp * rankMultiplier);
+          student.petExp = (student.petExp || 0) + bonusExp;
           // 检查是否升级
           const levelInfo = getLevelInfo(student.petExp);
           if (levelInfo.level > (student.petStage || 1)) {

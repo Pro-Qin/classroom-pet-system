@@ -452,6 +452,54 @@ const Store = {
     }
   },
 
+  // ---- 批量发放宠物经验（基于积分排名） ----
+  async batchGrantPetExp(options) {
+    try {
+      const { baseExp = 50, topMultiplier = 2.0, bottomMultiplier = 0.5, moodLink = true } = options || {};
+      const students = this.state.students.filter(s => s.petType && !s.petDead);
+      if (students.length === 0) return { success: false, msg: '没有可发放经验的学生' };
+      const ranked = [...students].sort((a, b) => (b.points || 0) - (a.points || 0));
+      const total = ranked.length;
+      let levelUps = 0;
+      for (let i = 0; i < ranked.length; i++) {
+        const s = ranked[i];
+        const ratio = total === 1 ? topMultiplier :
+          bottomMultiplier + (topMultiplier - bottomMultiplier) * ((total - 1 - i) / (total - 1));
+        const exp = Math.round(baseExp * ratio);
+        const oldLevel = getLevelInfo(s.petExp || 0).level;
+        s.petExp = (s.petExp || 0) + exp;
+        const newLevel = getLevelInfo(s.petExp).level;
+        if (newLevel > oldLevel) levelUps++;
+        if (moodLink) {
+          const mood = getStudentMood(s.petStatus, s);
+          if (mood === PET_MOODS.excited || mood === PET_MOODS.happy) {
+            s.petExp += Math.round(exp * 0.1);
+          }
+        }
+      }
+      await dbStorage.storeStudents(this.state.students);
+      this._scheduleCloudPush();
+      this.state.studentRev++;
+      this._logAudit('批量发放经验', `为 ${students.length} 名学生发放宠物经验`, null);
+      return { success: true, total: students.length, levelUps };
+    } catch (e) {
+      return { success: false, msg: e.message };
+    }
+  },
+
+  // ---- 每日自动经验发放日期记录 ----
+  async getDailyGrantDate() {
+    try {
+      const val = await dbStorage.getMeta('dailyGrantDate');
+      return val || '';
+    } catch (e) { return ''; }
+  },
+  async setDailyGrantDate(dateStr) {
+    try {
+      await dbStorage.storeMeta('dailyGrantDate', dateStr);
+    } catch (e) {}
+  },
+
   // ---- 获取学生排名经验倍率（排名越高倍率越高）----
   _getRankMultiplier(studentId) {
     const ranked = [...this.state.students]

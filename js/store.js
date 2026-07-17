@@ -1879,6 +1879,45 @@ const Store = {
   async cloudStats() {
     return await CloudSync.getCloudStats();
   },
+
+  // ---- 版本与更新检测 ----
+  async checkForUpdate() {
+    try {
+      const resp = await fetch('https://raw.githubusercontent.com/Pro-Qin/classroom-pet-system/master/version.json', { 
+        cache: 'no-cache',
+        signal: AbortSignal.timeout(5000)
+      });
+      if (!resp.ok) return null;
+      const remote = await resp.json();
+      const local = await this.getLocalVersion();
+      if (!local || !remote.version) return null;
+      const isNew = this._compareVersions(remote.version, local.version) > 0;
+      return { hasUpdate: isNew, local: local.version, remote: remote.version, notes: remote.releaseNotes || '' };
+    } catch (e) {
+      return null;
+    }
+  },
+
+  async getLocalVersion() {
+    try {
+      const resp = await fetch('version.json', { cache: 'no-cache' });
+      if (!resp.ok) return null;
+      return await resp.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  _compareVersions(a, b) {
+    const pa = a.split('.').map(Number);
+    const pb = b.split('.').map(Number);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const na = pa[i] || 0, nb = pb[i] || 0;
+      if (na > nb) return 1;
+      if (na < nb) return -1;
+    }
+    return 0;
+  },
 };
 
 // ===== 初始化（异步，会被 app.js 中的 mounted 等待） =====

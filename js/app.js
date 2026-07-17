@@ -276,6 +276,17 @@ const App = {
       setTimeout(() => this.startWelcome(), 600);
     }
 
+    // 后台检查更新（不阻塞）
+    setTimeout(async () => {
+      try {
+        const result = await Store.checkForUpdate();
+        if (result && result.hasUpdate) {
+          Store.toast(`🔄 发现新版本 v${result.remote}，建议刷新页面获取更新`, 'info');
+          // 15秒后再次提示，或放在一个不明显的位置
+        }
+      } catch(e) {}
+    }, 3000);
+
     // 淡出加载画面
     const splash = document.getElementById('loading-splash');
     if (splash) {

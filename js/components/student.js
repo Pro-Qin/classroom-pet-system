@@ -396,6 +396,13 @@ const PetPage = {
         this.$emit('toast', result.msg || '更新失败', 'error');
       }
     },
+    getAccessoryStyle(acc) {
+      var positions = {hat: {top:-8, left:35}, glasses: {top:22, left:32}, scarf: {top:48, left:28}, bowtie: {top:50, left:35}};
+      var base = positions[acc.type] || {top:20, left:35};
+      var x = base.left + (Math.random() - 0.5) * 10;
+      var y = base.top + (Math.random() - 0.5) * 6;
+      return { left: x + '%', top: y + 'px', fontSize: '16px', transform: 'rotate(' + (Math.random() - 0.5) * 15 + 'deg)', position: 'absolute', pointerEvents: 'none' };
+    },
   },
   template: `
     <div class="pet-page animate-pageIn">
@@ -408,7 +415,7 @@ const PetPage = {
             <!-- 气泡 -->
             <div v-if="showBubble" class="pet-status-bubble" style="max-width:180px;font-size:11px;">{{ bubbleText }}</div>
             <!-- 宠物：优先显示自定义头像 > 宠物图片 > emoji -->
-            <div class="pet-emoji" :class="petAction" :style="{fontSize: '90px'}">
+            <div class="pet-emoji" :class="petAction" :style="{fontSize: '90px', position: 'relative'}">
               <img v-if="student.avatar && student.avatar.startsWith('data:')"
                    :src="student.avatar"
                    style="width:90px;height:90px;border-radius:50%;object-fit:cover;border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.2);cursor:pointer;"
@@ -419,7 +426,16 @@ const PetPage = {
                    style="width:90px;height:90px;border-radius:50%;object-fit:cover;border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.2);cursor:pointer;"
                    @click.stop="showAvatarUpload=true"
                    title="点击更换头像" />
-              <span v-else @click.stop="showAvatarUpload=true" title="点击上传头像">{{ petEmoji }}</span>
+              <span v-else @click.stop="showAvatarUpload=true" title="点击上传头像" style="position:relative;display:inline-block;">{{ petEmoji }}</span>
+              <!-- 装饰品叠加层 -->
+              <div v-if="student.accessories && student.accessories.length > 0" style="position:absolute;inset:0;pointer-events:none;">
+                <div v-for="acc in student.accessories" :key="acc.id"
+                     :title="acc.name"
+                     style="position:absolute;"
+                     :style="getAccessoryStyle(acc)">
+                  <span v-html="acc.svg || ''"></span>
+                </div>
+              </div>
             </div>
             <!-- 等级徽章 -->
             <div class="pet-level-badge">Lv.{{ levelInfo.level }} {{ levelInfo.name }}</div>

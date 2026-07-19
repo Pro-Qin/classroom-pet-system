@@ -2087,18 +2087,23 @@ const Store = {
     try {
       const jsonStr = typeof input === "object" ? await input.text() : input;
       const data = JSON.parse(jsonStr);
-      if (!data.students || !Array.isArray(data.students)) return { success: false, msg: '文件格式错误：缺少学生数据' };
-      if (data.tasks) this.state.tasks = data.tasks;
-      if (data.pointsLog) this.state.pointsLog = data.pointsLog;
-      this.state.students = data.students;
-      this.state.studentRev++;
-      await dbStorage.storeStudents(this.state.students);
-      if (data.tasks) await dbStorage.storeTasks(this.state.tasks);
+      if (!data.students || !Array.isArray(data.students)) {
+        this.toast('文件格式错误，请选择正确的备份文件', 'error');
+        return false;
+      }
+      await dbStorage.storeStudents(data.students);
       this._scheduleCloudPush();
-      this._logAudit('恢复数据', '从JSON备份恢复，学生数: ' + data.students.length, null);
-      return { success: true, msg: '成功恢复 ' + data.students.length + ' 名学生数据' };
+      await dbStorage.storeTasks(data.tasks || []);
+      this._scheduleCloudPush();
+      this.state.students.splice(0, this.state.students.length, ...data.students);
+      this.state.tasks.splice(0, this.state.tasks.length, ...(data.tasks || []));
+      this.state.taskRev++;
+      this.state.studentRev++;
+      this.toast('导入成功！学生 ' + data.students.length + ' 条，任务 ' + (data.tasks||[]).length + ' 条', 'success');
+      return true;
     } catch (e) {
-      return { success: false, msg: '解析失败: ' + e.message };
+      this.toast('导入失败: ' + e.message, 'error');
+      return false;
     }
   },
 

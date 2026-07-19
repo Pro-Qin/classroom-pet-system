@@ -1,6 +1,8 @@
 // ===== 主应用入口 =====
 
-const { createApp, reactive, ref, computed, onMounted, onBeforeUnmount } = Vue;
+// 防御性解构：Vue 未加载时不抛错
+const VueApp = typeof Vue !== 'undefined' ? Vue : {};
+const { createApp, reactive, ref, computed, onMounted, onBeforeUnmount } = VueApp;
 
 const App = {
   name: 'App',

@@ -2062,6 +2062,112 @@ const Store = {
     }
     return 0;
   },
+
+  // ---- JSON 数据备份/恢复 ----
+  exportJSON() {
+    const data = {
+      version: 2,
+      exportTime: new Date().toISOString(),
+      students: this.state.students,
+      tasks: this.state.tasks,
+      pointsLog: this.state.pointsLog,
+      auditLog: this.state.auditLog.slice(0, 100),
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'petsystem-backup-' + new Date().toISOString().slice(0,10) + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    this._logAudit('备份数据', '导出JSON备份', null);
+    return { success: true, count: data.students.length };
+  },
+
+  async importJSON(input) {
+    try {
+      const jsonStr = typeof input === "object" ? await input.text() : input;
+      const data = JSON.parse(jsonStr);
+      if (!data.students || !Array.isArray(data.students)) return { success: false, msg: '文件格式错误：缺少学生数据' };
+      if (data.tasks) this.state.tasks = data.tasks;
+      if (data.pointsLog) this.state.pointsLog = data.pointsLog;
+      this.state.students = data.students;
+      this.state.studentRev++;
+      await dbStorage.storeStudents(this.state.students);
+      if (data.tasks) await dbStorage.storeTasks(this.state.tasks);
+      this._scheduleCloudPush();
+      this._logAudit('恢复数据', '从JSON备份恢复，学生数: ' + data.students.length, null);
+      return { success: true, msg: '成功恢复 ' + data.students.length + ' 名学生数据' };
+    } catch (e) {
+      return { success: false, msg: '解析失败: ' + e.message };
+    }
+  },
+
+  // ---- 宠物竞技场：掷骰对战 ----
+  petDuelCooldowns: {},
+  async petDuel(challengerId, opponentId) {
+    try {
+      const cooldownKey = challengerId + '_' + opponentId;
+      const lastTime = this.petDuelCooldowns[cooldownKey] || 0;
+      if (Date.now() - lastTime < 300000) { // 5分钟冷却
+        const remain = Math.ceil((300000 - (Date.now() - lastTime)) / 60000);
+        return { success: false, msg: '冷却中，还需 ' + remain + ' 分钟' };
+      }
+      const challenger = this.state.students.find(s => s.id === challengerId);
+      const opponent = this.state.students.find(s => s.id === opponentId);
+      if (!challenger || !opponent) return { success: false, msg: '学生不存在' };
+      if (!challenger.petType || !opponent.petType) return { success: false, msg: '双方都需要领养宠物' };
+      
+      const rollA = Math.floor(Math.random() * 6) + 1;
+      const rollB = Math.floor(Math.random() * 6) + 1;
+      
+      this.petDuelCooldowns[cooldownKey] = Date.now();
+      
+      let winner, loser, points = 5;
+      if (rollA > rollB) { winner = challenger; loser = opponent; }
+      else if (rollB > rollA) { winner = opponent; loser = challenger; }
+      else { return { success: true, draw: true, rollA, rollB, msg: '平局！双方都是 ' + rollA }; }
+      
+      winner.points = (winner.points || 0) + points;
+      this._logAudit('宠物对战', winner.name + ' 掷出' + rollA + ' 击败 ' + loser.name + '(' + rollB + ')，赢得 ' + points + ' 分', null);
+      
+      return {
+        success: true, draw: false,
+        challengerName: challenger.name, opponentName: opponent.name,
+        rollA, rollB,
+        winnerName: winner.name,
+        points,
+        msg: challenger.id === winner.id
+          ? '🎉 ' + challenger.name + ' 掷出 ' + rollA + '，击败 ' + opponent.name + '（' + rollB + '）！+ ' + points + ' 分'
+          : '😅 ' + challenger.name + ' 掷出 ' + rollA + '，不敌 ' + opponent.name + '（' + rollB + '）'
+      };
+    } catch (e) { return { success: false, msg: '对战失败: ' + e.message }; }
+  },
+
+  // ---- 宠物装饰品 ----
+  async buyAccessory(studentId, accessoryId) {
+    const acc = PET_ACCESSORIES.find(a => a.id === accessoryId);
+    if (!acc) return { success: false, msg: '装饰品不存在' };
+    const student = this.state.students.find(s => s.id === studentId);
+    if (!student) return { success: false, msg: '学生不存在' };
+    if ((student.money || 0) < acc.price) return { success: false, msg: '金币不足，需要 ' + acc.price + ' 金币' };
+    student.money -= acc.price;
+    if (!student.accessories) student.accessories = [];
+    student.accessories.push({ id: acc.id, name: acc.name, type: acc.type, svg: acc.svg });
+    this._logAudit('购买装饰品', student.name + ' 购买 ' + acc.name, null);
+    return { success: true, msg: '✅ 成功购买 ' + acc.name };
+  },
+
+  async equipAccessory(studentId, accessoryId, slot) {
+    const student = this.state.students.find(s => s.id === studentId);
+    if (!student) return { success: false };
+    if (!student.equipped) student.equipped = {};
+    if (student.equipped[slot] === accessoryId) {
+      delete student.equipped[slot];
+    } else {
+      student.equipped[slot] = accessoryId;
+    }
+    return { success: true };
+  },
 };
 
 // ===== 初始化（异步，会被 app.js 中的 mounted 等待） =====

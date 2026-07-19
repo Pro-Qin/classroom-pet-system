@@ -122,6 +122,22 @@ function getMoodReason(moodKey) {
 }
 
 // 背包道具（金币购买）
+
+// ---- 宠物装饰品 ----
+const PET_ACCESSORIES = [
+  { id: 'crown', name: '小皇冠', price: 50, emoji: '👑', type: 'hat',
+    desc: '让你的宠物戴上金色皇冠', svg: '<path d="M12 2l3 7h-6z" fill="gold"/><circle cx="12" cy="6" r="2" fill="#FFD700"/>' },
+  { id: 'ribbon', name: '蝴蝶结', price: 30, emoji: '🎀', type: 'hat',
+    desc: '粉色蝴蝶结，可爱加倍', svg: '<path d="M8 4 Q12 0 16 4 Q12 2 8 4z" fill="#FF69B4"/><circle cx="12" cy="3" r="2" fill="#FF1493"/>' },
+  { id: 'glasses', name: '墨镜', price: 40, emoji: '🕶️', type: 'face',
+    desc: '酷酷的墨镜', svg: '<rect x="6" y="2" width="12" height="6" rx="3" fill="#333"/><circle cx="9" cy="5" r="3" fill="#555"/><circle cx="15" cy="5" r="3" fill="#555"/>' },
+  { id: 'scarf', name: '红围巾', price: 35, emoji: '🧣', type: 'neck',
+    desc: '温暖的红围巾', svg: '<path d="M4 10 Q12 14 20 10 L18 16 Q12 18 6 16z" fill="#DC143C"/>' },
+  { id: 'bowtie', name: '领结', price: 25, emoji: '🎀', type: 'neck',
+    desc: '优雅的小领结', svg: '<polygon points="8,6 16,6 12,12" fill="#7C4DFF"/><circle cx="12" cy="9" r="2" fill="#FF6B9D"/>' },
+];
+
+
 const ITEMS = [
   { id: 'apple',     name: '苹果',     emoji: '🍎', type: 'food',   effect: { hungry: 20, happy: 5,  exp: 10 }, cost: 5,  desc: '补充饱食度+20，经验+10' },
   { id: 'cake',      name: '蛋糕',     emoji: '🎂', type: 'food',   effect: { hungry: 50, happy: 15, exp: 30 }, cost: 15, desc: '美味蛋糕，大幅补充饱食度，经验+30' },

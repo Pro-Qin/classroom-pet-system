@@ -521,6 +521,55 @@ const App = {
   `
 };
 
+// 全局 JS 错误捕获（最后一道防线）
+window.onerror = function(msg, url, line) {
+  var splash = document.getElementById('loading-splash');
+  if (splash && splash.style.opacity !== '0') {
+    splash.innerHTML = '<div style="text-align:center;padding:40px;color:#fff;">' +
+      '<div style="font-size:48px;margin-bottom:16px;">💥</div>' +
+      '<h2 style="font-size:22px;font-weight:800;margin-bottom:12px;">程序出错</h2>' +
+      '<p style="font-size:14px;opacity:0.7;margin-bottom:20px;">' + (msg || '未知错误') + '</p>' +
+      '<button onclick="location.reload()" style="padding:10px 28px;border-radius:12px;border:none;background:#fff;color:#7C4DFF;font-weight:700;font-size:15px;cursor:pointer;">🔄 刷新重试</button></div>';
+    splash.style.background = 'linear-gradient(135deg,#1a1a2e,#16213e)';
+    splash.style.opacity = '1';
+  }
+};
+
 // 挂载应用
 const app = createApp(App);
-app.mount('#app');
+
+// Vue 全局错误捕获：渲染出错时不白屏，显示错误信息
+app.config.errorHandler = function(err, vm, info) {
+  console.error('[Vue Error]', err, info);
+  var splash = document.getElementById('loading-splash');
+  if (splash) {
+    splash.innerHTML = '' +
+      '<div style="text-align:center;padding:40px;color:#fff;">' +
+      '<div style="font-size:48px;margin-bottom:16px;">⚠️</div>' +
+      '<h2 style="font-size:22px;font-weight:800;margin-bottom:12px;">页面渲染出错</h2>' +
+      '<p style="font-size:14px;opacity:0.7;margin-bottom:8px;">' + (err.message || '未知错误') + '</p>' +
+      '<p style="font-size:13px;opacity:0.5;margin-bottom:20px;">位置: ' + (info || '未知') + '</p>' +
+      '<button onclick="location.reload()" style="padding:10px 28px;border-radius:12px;border:none;background:#fff;color:#7C4DFF;font-weight:700;font-size:15px;cursor:pointer;">🔄 刷新重试</button>' +
+      '</div>';
+    splash.style.background = 'linear-gradient(135deg,#1a1a2e,#16213e)';
+    splash.style.opacity = '1';
+  }
+};
+
+try {
+  app.mount('#app');
+} catch(e) {
+  console.error('[App Mount Failed]', e);
+  var splash = document.getElementById('loading-splash');
+  if (splash) {
+    splash.innerHTML = '' +
+      '<div style="text-align:center;padding:40px;color:#fff;">' +
+      '<div style="font-size:48px;margin-bottom:16px;">💥</div>' +
+      '<h2 style="font-size:22px;font-weight:800;margin-bottom:12px;">应用启动失败</h2>' +
+      '<p style="font-size:14px;opacity:0.7;margin-bottom:20px;">' + e.message + '</p>' +
+      '<button onclick="location.reload()" style="padding:10px 28px;border-radius:12px;border:none;background:#fff;color:#7C4DFF;font-weight:700;font-size:15px;cursor:pointer;">🔄 刷新重试</button>' +
+      '</div>';
+    splash.style.background = 'linear-gradient(135deg,#1a1a2e,#16213e)';
+    splash.style.opacity = '1';
+  }
+}

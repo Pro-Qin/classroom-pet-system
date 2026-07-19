@@ -207,8 +207,8 @@ const ADMIN_ACCOUNT = {
 
 // 教师账号
 const TEACHER_ACCOUNTS = [
-  { id: 100, name: '王老师', username: 'teacher', password: 'teacher123', role: 'teacher', class: '高一一班', avatar: '👩‍🏫' },
-  { id: 101, name: '李老师', username: 'teacher2', password: 'teacher123', role: 'teacher', class: '三年二班', avatar: '👨‍🏫' },
+  { id: 100, name: '王老师', username: 'teacher', password: '123456', role: 'teacher', class: '高一一班', avatar: '👩‍🏫' },
+  { id: 101, name: '李老师', username: 'teacher2', password: '123456', role: 'teacher', class: '三年二班', avatar: '👨‍🏫' },
 ];
 
 // 初始邀请码池（管理员可增删）

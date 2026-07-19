@@ -79,6 +79,17 @@
   })();
   </script>
 
+  <!-- 兜底：15秒后无论 Vue 是否成功都移除加载画面（防止卡白屏） -->
+  <script>
+  setTimeout(function(){
+    var splash = document.getElementById('loading-splash');
+    if (splash && splash.style.opacity !== '0') {
+      splash.style.opacity = '0';
+      setTimeout(function(){ splash.remove(); document.getElementById('app').style.display = 'block'; }, 500);
+    }
+  }, 15000);
+  </script>
+
   <!-- 加载画面：独立于 Vue，确保页面打开立即显示 -->
   <div id="loading-splash">
     <div class="splash-icon">🐾</div>

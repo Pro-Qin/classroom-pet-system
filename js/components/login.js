@@ -168,10 +168,10 @@ const LoginPage = {
       // 模拟网络延迟
       await new Promise(r => setTimeout(r, 500));
       
-      // 查找学生账号
+      // 查找学生账号（比对实际密码，无万能回退）
       const student = Store.state.students.find(s => 
         (s.username === this.studentUsername.trim() || s.name === this.studentUsername.trim()) &&
-        (s.password === this.studentPassword || this.studentPassword === '123456')
+        s.password === this.studentPassword
       );
       
       if (student) {
@@ -193,10 +193,11 @@ const LoginPage = {
       
       await new Promise(r => setTimeout(r, 500));
       
-      // 查找教师账号
-      const teacher = TEACHER_ACCOUNTS.find(t => 
+      // 从 Store 查找教师账号（支持动态密码）
+      const teachers = Store._getTeacherAccounts ? Store._getTeacherAccounts() : TEACHER_ACCOUNTS;
+      const teacher = teachers.find(t => 
         t.username === this.teacherUsername.trim() &&
-        (t.password === this.teacherPassword || this.teacherPassword === '123456')
+        t.password === this.teacherPassword
       );
       
       if (teacher) {

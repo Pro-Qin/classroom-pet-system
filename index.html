@@ -152,6 +152,23 @@
     async function boot() {
       if (statusEl) statusEl.textContent = '等待框架加载...';
       await waitForVue();
+      
+      // 防御：Vue 加载失败时显示错误页面，不再继续
+      if (typeof Vue === 'undefined') {
+        var splash = document.getElementById('loading-splash');
+        if (splash) {
+          splash.innerHTML = '' +
+            '<div style="text-align:center;padding:40px;color:#fff;">' +
+            '<div style="font-size:48px;margin-bottom:16px;">🌐</div>' +
+            '<h2 style="font-size:22px;font-weight:800;margin-bottom:12px;">网络连接失败</h2>' +
+            '<p style="font-size:14px;opacity:0.7;margin-bottom:20px;">无法加载核心框架，请检查网络后刷新页面</p>' +
+            '<button onclick="location.reload()" style="padding:10px 28px;border-radius:12px;border:none;background:#fff;color:#7C4DFF;font-weight:700;font-size:15px;cursor:pointer;">🔄 刷新重试</button>' +
+            '</div>';
+          splash.style.background = 'linear-gradient(135deg,#1a1a2e,#16213e)';
+        }
+        return;
+      }
+      
       if (statusEl) statusEl.textContent = '正在初始化应用...';
 
       for (var i = 0; i < localScripts.length; i++) {
@@ -160,6 +177,18 @@
         } catch(e) {
           console.error('启动失败:', e);
           if (statusEl) statusEl.textContent = '❌ 加载失败: ' + localScripts[i];
+          var splash = document.getElementById('loading-splash');
+          if (splash) {
+            splash.innerHTML = '' +
+              '<div style="text-align:center;padding:40px;color:#fff;">' +
+              '<div style="font-size:48px;margin-bottom:16px;">📁</div>' +
+              '<h2 style="font-size:22px;font-weight:800;margin-bottom:12px;">文件加载失败</h2>' +
+              '<p style="font-size:14px;opacity:0.7;margin-bottom:8px;">无法加载: ' + localScripts[i] + '</p>' +
+              '<p style="font-size:13px;opacity:0.5;margin-bottom:20px;">请确保文件完整，或重新下载项目</p>' +
+              '<button onclick="location.reload()" style="padding:10px 28px;border-radius:12px;border:none;background:#fff;color:#7C4DFF;font-weight:700;font-size:15px;cursor:pointer;">🔄 刷新重试</button>' +
+              '</div>';
+            splash.style.background = 'linear-gradient(135deg,#1a1a2e,#16213e)';
+          }
           return;
         }
       }

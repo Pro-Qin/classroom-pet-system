@@ -1937,6 +1937,17 @@ const Store = {
     return { success: false, msg: '账号或密码错误' };
   },
 
+  // ---- 教师登录验证（内部比对密码，不对外暴露 password 字段）----
+  async verifyTeacherLogin(username, password) {
+    const accounts = this._getTeacherAccounts().map(t => ({ ...t }));
+    const teacher = accounts.find(t => t.username === username && t.password === password);
+    if (teacher) {
+      const { password: _, ...safe } = teacher;
+      return safe;
+    }
+    return null;
+  },
+
   // ---- 更新管理员账号 ----
   async updateAdminAccount(username, password) {
     try {

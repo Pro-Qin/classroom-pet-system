@@ -89,8 +89,42 @@ if %errorlevel% neq 0 (
     :: 写初始进度
     echo {"progress":5,"status":"正在准备 Python 环境...","done":false} > "%STATUS_FILE%"
     
-    :: 启动临时服务器（如果还没启动）
-    start /b python -m http.server 5500 >nul 2>&1
+    :: 启动临时服务器（使用PowerShell内置的HttpListener，不需要Python）
+    echo {"progress":5,"status":"正在启动安装向导...","done":false} > "%STATUS_FILE%"
+    powershell -Command "& {
+        $p = @'
+using System;
+using System.IO;
+using System.Net;
+using System.Text;
+class SimpleServer {
+    static void Main(string[] args) {
+        var dir = args[0];
+        var prefix = 'http://localhost:5500/';
+        var hl = new HttpListener();
+        hl.Prefixes.Add(prefix);
+        hl.Start();
+        for (;;) {
+            var ctx = hl.GetContext();
+            var req = ctx.Request;
+            var path = req.Url.LocalPath.TrimStart('/');
+            if (string.IsNullOrEmpty(path)) path = 'setup.html';
+            var file = Path.Combine(dir, path);
+            if (File.Exists(file)) {
+                var ext = Path.GetExtension(file).ToLower();
+                if (ext == '.html') ctx.Response.ContentType = 'text/html; charset=utf-8';
+                else if (ext == '.json') ctx.Response.ContentType = 'application/json; charset=utf-8';
+                var bytes = File.ReadAllBytes(file);
+                ctx.Response.OutputStream.Write(bytes,0,bytes.Length);
+            } else { ctx.Response.StatusCode = 404; }
+            ctx.Response.Close();
+        }
+    }
+}
+'@;
+        $comp = Add-Type -TypeDefinition $p -Language CSharpVersion3 -PassThru -ReferencedAssemblies 'System.Net.Http' 2>&1;
+        if ($comp) { [SimpleServer]::Main(@( (Get-Location).Path )); }
+    }" >nul 2>&1
     ping 127.0.0.1 -n 2 >nul
     start "" http://localhost:5500/setup.html
     

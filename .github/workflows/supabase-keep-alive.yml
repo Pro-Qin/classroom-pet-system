@@ -1,0 +1,27 @@
+name: Supabase Keep Alive
+
+on:
+  schedule:
+    # 每天 UTC 时间 2:00, 8:00, 14:00, 20:00 运行（北京时间 10:00, 16:00, 22:00, 次日 4:00）
+    - cron: '0 2,8,14,20 * * *'
+  workflow_dispatch:  # 也支持手动触发
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          curl -s -o /dev/null -w "Status: %{http_code}\n" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            "https://oprbqzfqqvwkymhucrgg.supabase.co/rest/v1/students?limit=1"
+      
+      - name: Ping Supabase Auth API
+        run: |
+          curl -s -o /dev/null -w "Auth Status: %{http_code}\n" \
+            "https://oprbqzfqqvwkymhucrgg.supabase.co/auth/v1/health"
+      
+      - name: Send keep-alive via Supabase API health
+        run: |
+          echo "Keep-alive ping sent at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"

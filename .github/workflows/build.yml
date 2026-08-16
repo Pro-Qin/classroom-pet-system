@@ -1,0 +1,39 @@
+name: Build（手动打包）
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: 构建前端 + 后端产物
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci --no-audit --no-fund
+
+      - name: 构建（client + server）
+        run: npm run build
+
+      - name: 上传构建产物（可直接拷贝到一体机运行）
+        uses: actions/upload-artifact@v4
+        with:
+          name: classroom-pet-system-dist
+          path: |
+            client/dist
+            server/dist
+            start.bat
+            kiosk.bat
+            package.json
+          if-no-files-found: error

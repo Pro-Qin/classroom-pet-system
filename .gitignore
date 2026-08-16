@@ -1,0 +1,11 @@
+node_modules/
+dist/
+server/data/
+_reference/
+*.log
+.DS_Store
+.learnings/
+configs/
+.reasonix/
+
+Pet2 - Start pursuing the….json

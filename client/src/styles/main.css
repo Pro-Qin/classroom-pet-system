@@ -1,0 +1,235 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --surface-0: #0b1026;
+  --surface-1: #131a3a;
+  --surface-2: #1b2447;
+  --surface-3: #25305c;
+  --primary: #6366f1;
+  --accent: #a78bfa;
+  --text-1: #eef1ff;
+  --text-2: #a5b0d8;
+  --gold: #fbbf24;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--text-1);
+  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  background:
+    radial-gradient(1200px 800px at 85% -10%, rgba(99, 102, 241, 0.28), transparent 60%),
+    radial-gradient(1000px 700px at -10% 110%, rgba(168, 85, 247, 0.22), transparent 55%),
+    radial-gradient(600px 400px at 50% 50%, rgba(34, 211, 238, 0.08), transparent 60%),
+    var(--surface-0);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+.glass {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(14px);
+  border-radius: 1.25rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-medium transition-all duration-150 ease-out select-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed;
+}
+.btn:active {
+  transform: scale(0.97);
+}
+.btn-primary {
+  @apply bg-indigo-500 text-white hover:bg-indigo-400 shadow-glow;
+}
+.btn-ghost {
+  @apply bg-white/10 text-indigo-100 border border-white/15 hover:bg-white/20;
+}
+.btn-gold {
+  @apply bg-amber-400 text-amber-950 hover:bg-amber-300;
+}
+.btn-danger {
+  @apply bg-rose-500/85 text-white hover:bg-rose-500;
+}
+
+.input {
+  @apply w-full rounded-xl bg-white/10 border border-white/15 px-3.5 py-2.5 text-indigo-50 placeholder:text-indigo-200/40 outline-none transition-colors;
+}
+.input:focus {
+  @apply border-indigo-400/70;
+}
+
+.label {
+  @apply block text-sm text-indigo-200/80 mb-1.5 font-medium;
+}
+
+/* 阶段徽章 / 分数标签 */
+.pill {
+  @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---- 深色下拉（黑底白字） ---- */
+select.input,
+select {
+  color-scheme: dark;
+}
+select.input option,
+select option {
+  background: #131a3a;
+  color: #eef1ff;
+}
+
+/* ---- 全局漂浮光斑（低性能开销） ---- */
+.bg-orb {
+  position: fixed;
+  border-radius: 9999px;
+  filter: blur(70px);
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 0;
+  animation: orbDrift 16s ease-in-out infinite alternate;
+}
+@keyframes orbDrift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(30px, -24px, 0) scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bg-orb { animation: none; }
+}
+
+/* ---- 底部操作栏（一体机大按钮） ---- */
+.bottom-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem calc(0.9rem + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, rgba(11, 16, 38, 0.92), rgba(11, 16, 38, 0.55) 70%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.bottom-bar .btn {
+  min-height: 2.5rem;
+  padding: 0.4rem 1.1rem;
+  font-size: 0.92rem;
+  border-radius: 0.9rem;
+}
+@media (max-width: 640px) {
+  .bottom-bar .btn { padding: 0.4rem 0.8rem; font-size: 0.85rem; }
+}
+
+/* ---- 标题栏水印 ---- */
+.watermark {
+  position: fixed;
+  top: 0.45rem;
+  right: 1rem;
+  z-index: 90;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.5);
+  pointer-events: none;
+  white-space: nowrap;
+  user-select: none;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* ---- 卡片微光 ---- */
+.glass-hover {
+  transition: transform 0.25s ease, border-color 0.25s ease, background-color 0.25s ease, box-shadow 0.25s ease;
+}
+.glass-hover:hover {
+  transform: translateY(-2px);
+  border-color: rgba(165, 180, 252, 0.45);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+/* 积分数字发光 */
+.points-glow {
+  text-shadow: 0 0 24px rgba(251, 191, 36, 0.45);
+}
+/* ---- 属性条预览闪烁（低透明度） ---- */
+@keyframes attrFlash {
+  0%, 100% { opacity: 0.12; }
+  50% { opacity: 0.3; }
+}
+.attr-flash {
+  animation: attrFlash 1.2s ease-in-out infinite;
+}
+@keyframes attrFlashText {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+.attr-flash-text {
+  animation: attrFlashText 1.2s ease-in-out infinite;
+}
+
+/* ---- 背包侧栏滑入 ---- */
+.panel-enter-active,
+.panel-leave-active {
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.35s ease;
+}
+.panel-enter-from,
+.panel-leave-to {
+  transform: translateX(100%);
+  opacity: 0;
+}
+/* ---- 未领养宠物：白底黑字问号 + 差色特效（周期性出现） ---- */
+@keyframes chromaticGlitch {
+  0%, 88%, 100% { text-shadow: 0 0 transparent; transform: translateX(0); }
+  90% { text-shadow: 3px 0 rgba(255, 0, 90, 0.6), -3px 0 rgba(0, 229, 255, 0.6); transform: translateX(-1px); }
+  93% { text-shadow: -3px 0 rgba(255, 0, 90, 0.5), 3px 0 rgba(0, 229, 255, 0.5); transform: translateX(1px); }
+  96% { text-shadow: 2px 0 rgba(255, 0, 90, 0.55), -2px 0 rgba(0, 229, 255, 0.55); transform: translateX(-1px); }
+}
+.no-pet-avatar {
+  animation: chromaticGlitch 5s ease-in-out infinite;
+}
+
+/* ---- 教师加经验：卡片闪烁反馈 ---- */
+@keyframes expFlash {
+  0%, 100% { box-shadow: 0 0 0 rgba(232, 121, 249, 0); }
+  50% { box-shadow: 0 0 26px rgba(232, 121, 249, 0.55); }
+}
+.exp-flash {
+  animation: expFlash 0.8s ease-in-out 2;
+}
+
+/* ---- 底栏毛玻璃增强 ---- */
+.bottom-bar {
+  background: linear-gradient(to top, rgba(11, 16, 38, 0.96) 20%, rgba(11, 16, 38, 0.72) 70%, rgba(11, 16, 38, 0.2));
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}

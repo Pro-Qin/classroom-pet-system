@@ -247,7 +247,13 @@
           <label class="label">Service Role Key</label>
           <input v-model="syncForm.supabaseServiceKey" type="password" class="input" />
         </div>
-        <button class="btn btn-primary" @click="saveSyncConfig">保存同步配置</button>
+        <div class="flex gap-2 flex-wrap">
+          <button class="btn btn-primary" @click="saveSyncConfig">保存同步配置</button>
+          <button class="btn btn-ghost" :disabled="testingSync" @click="testSync">
+            <Loader2 v-if="testingSync" class="w-4 h-4 animate-spin" /> 测试连接
+          </button>
+        </div>
+        <p v-if="testMsg" class="text-xs" :class="testMsgType === 'err' ? 'text-rose-300' : 'text-emerald-300'">{{ testMsg }}</p>
         <div class="rounded-xl bg-white/5 p-3 text-xs text-indigo-200/70">
           当前模式：{{ syncStatus.mode }} ｜ 上次同步：{{ syncStatus.lastSyncAt ? fmtTime(syncStatus.lastSyncAt) : '从未' }}
         </div>
@@ -322,6 +328,9 @@ const configMsg = ref('');
 const configMsgType = ref<'ok' | 'err'>('ok');
 const pwForm = reactive({ old: '', next: '' });
 const syncForm = reactive({ supabaseUrl: '', supabaseAnonKey: '', supabaseServiceKey: '' });
+const testingSync = ref(false);
+const testMsg = ref('');
+const testMsgType = ref<'ok' | 'err'>('ok');
 
 const fmtTime = (s: string): string => new Date(s).toLocaleString('zh-CN', { hour12: false });
 
@@ -539,6 +548,21 @@ async function changePw(): Promise<void> {
     toast('密码已更新', 'success');
     Object.assign(pwForm, { old: '', next: '' });
   } catch (e) { toast((e as Error).message, 'error'); }
+}
+
+async function testSync(): Promise<void> {
+  testingSync.value = true;
+  testMsg.value = '';
+  try {
+    const r = await api<{ ok: boolean; readOk: boolean; writeKeyPresent: boolean; note?: string; error?: string }>('/sync/test', { method: 'POST' });
+    testMsg.value = r.note ?? (r.ok ? '连接成功' : '连接失败');
+    testMsgType.value = r.ok ? 'ok' : 'err';
+  } catch (e) {
+    testMsg.value = (e as Error).message;
+    testMsgType.value = 'err';
+  } finally {
+    testingSync.value = false;
+  }
 }
 
 async function saveSyncConfig(): Promise<void> {

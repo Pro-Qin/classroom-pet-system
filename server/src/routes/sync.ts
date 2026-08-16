@@ -324,6 +324,47 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
     });
   });
 
+  // 连接测试（管理员）：用 anon/publishable key 做一次只读 REST 探测，并报告 service key 是否已配置
+  app.post('/api/sync/test', _auth, requireRole(['admin']), async (_req, res) => {
+    const cfg = loadConfig();
+    if (!cfg.supabaseUrl) {
+      res.status(400).json({ ok: false, error: '尚未配置 Supabase 项目地址' });
+      return;
+    }
+    if (!isValidSupabaseUrl(cfg.supabaseUrl)) {
+      res.status(400).json({ ok: false, error: 'Supabase 地址无效' });
+      return;
+    }
+    const readKey = cfg.supabaseAnonKey?.trim();
+    if (!readKey) {
+      res.status(400).json({ ok: false, error: '尚未配置 Anon / Publishable Key' });
+      return;
+    }
+    try {
+      const r2 = await fetch(cfg.supabaseUrl + '/rest/v1/students?select=id&limit=1', {
+        headers: {
+          apikey: readKey,
+          Authorization: 'Bearer ' + readKey,
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+      const readOk = r2.status === 200 || r2.status === 404;
+      res.json({
+        ok: readOk,
+        readOk,
+        writeKeyPresent: !!cfg.supabaseServiceKey,
+        status: r2.status,
+        note: readOk
+          ? (cfg.supabaseServiceKey
+              ? '连接成功：可读可写（service role key 已配置）'
+              : '连接成功（只读）：还缺少 Service Role Key，写入/同步将不可用，请到 Supabase 后台 Project Settings → API 获取 service_role 密钥')
+          : '读取失败：请检查项目地址与 Key 是否正确',
+      });
+    } catch {
+      res.status(500).json({ ok: false, error: '无法连接 Supabase（网络或地址问题）' });
+    }
+  });
+
   // 首次配置完成标记
   app.post('/api/sync/firstrun', _auth, (req, res) => {
     setSetting('first_run_done', '1');

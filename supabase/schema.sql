@@ -86,7 +86,7 @@ create table if not exists items (
   type text not null default 'food',
   cost bigint not null default 0,
   effect text not null default '{}',
-  desc text not null default '',
+  "desc" text not null default '',
   sort bigint not null default 0,
   created_at text not null,
   updated_at text not null,

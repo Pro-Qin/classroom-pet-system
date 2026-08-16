@@ -387,6 +387,27 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
     res.json({ ok: true, message: '已归档「' + label + '」并开始新学期', backupFile: path.basename(file) });
   });
 
+  // 清空全部业务数据（学生/宠物/流水/背包），不恢复演示数据；先生成快照再清空
+  app.post('/api/admin/clear-data', auth, adminOnly, (req, res) => {
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    const file = path.join(BACKUP_DIR, 'clear-' + ts + '.db');
+    db().exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+    const d = db();
+    d.prepare(`DELETE FROM point_events`).run();
+    d.prepare(`DELETE FROM item_use_logs`).run();
+    d.prepare(`DELETE FROM backpacks`).run();
+    d.prepare(`DELETE FROM pets`).run();
+    d.prepare(`DELETE FROM students`).run();
+    d.prepare(`INSERT INTO audit_logs (id, action, detail, created_at) VALUES (?,?,?,?)`).run(
+      newId('aud'),
+      'CLEAR_DATA',
+      '清空全部业务数据（不恢复演示数据），快照：' + path.basename(file),
+      nowIso()
+    );
+    res.json({ ok: true, message: '已清空学生/宠物/流水/背包（不保留演示数据），快照：' + path.basename(file) });
+  });
+
   // ---------- 配置导出 / 导入（管理员；便于便携迁移，密钥不入源码） ----------
   app.get('/api/admin/config/export', auth, adminOnly, (_req, res) => {
     const cfg = loadConfig();

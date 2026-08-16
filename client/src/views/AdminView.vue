@@ -199,6 +199,7 @@
           <div class="flex flex-wrap gap-2">
             <button class="btn btn-ghost !py-2 text-sm" @click="exportData"><Download class="w-4 h-4" /> 导出全部数据</button>
             <button class="btn btn-danger !py-2 text-sm" @click="archiveTerm"><Archive class="w-4 h-4" /> 归档并开始新学期</button>
+            <button class="btn btn-danger !py-2 text-sm" @click="clearData"><Trash2 class="w-4 h-4" /> 清空业务数据（不留演示）</button>
           </div>
           <p v-if="dataMsg" class="text-xs" :class="dataMsgType === 'err' ? 'text-rose-300' : 'text-emerald-300'">{{ dataMsg }}</p>
         </div>
@@ -683,6 +684,21 @@ async function loadAudit(): Promise<void> {
     auditLogs.value = r.logs.slice(0, 20);
   } catch {
     auditLogs.value = [];
+  }
+}
+
+async function clearData(): Promise<void> {
+  if (!confirm('将清空全部学生/宠物/流水/背包（保留宠物种类、道具、规则与系统设置），且不恢复演示数据。确定继续？')) return;
+  if (!confirm('再次确认：清空后请立即在「同步」页执行同步，把清空结果推送到云端。继续？')) return;
+  try {
+    const r = await api<{ message: string }>('/admin/clear-data', { method: 'POST' });
+    dataMsg.value = r.message || '已清空';
+    dataMsgType.value = 'ok';
+    await loadAll();
+    await loadAudit();
+  } catch (e) {
+    dataMsg.value = (e as Error).message;
+    dataMsgType.value = 'err';
   }
 }
 

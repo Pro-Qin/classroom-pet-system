@@ -256,9 +256,16 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
             if (!u.ok && u.error) console.warn('[backup] 异地备份失败：', u.error);
           })
           .catch(() => {});
-      } catch {
-        console.error('[sync] runSync 失败');
-        res.status(500).json({ error: '同步失败，请稍后重试或检查云端配置' });
+      } catch (e) {
+        const msg = (e as Error).message ?? String(e);
+        console.error('[sync] runSync 失败:', msg);
+        if (/Could not find the table/.test(msg)) {
+          res.status(500).json({
+            error: '云端缺少数据表：请在 Supabase SQL Editor 中执行仓库根目录 supabase/schema.sql（或直接粘贴该文件内容）后再重试',
+          });
+          return;
+        }
+        res.status(500).json({ error: '同步失败，请稍后重试或检查云端配置（' + msg.slice(0, 120) + '）' });
       }
     })();
   });
@@ -354,6 +361,12 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
     patch.giteeRepo = DEFAULT_GITEE_REPO;
     patch.giteeEnabled = true;
     const cfg = updateConfig(patch);
+    // 云端配置变更后重置同步基线：下次同步做全量拉取+推送（保证本地数据完整上云）
+    if (cfg.supabaseUrl && cfg.supabaseServiceKey) {
+      getDb()
+        .prepare(`UPDATE sync_meta SET last_sync_at = '', updated_at = ? WHERE id = 'global'`)
+        .run(nowIso());
+    }
     res.json({
       ok: true,
       mode: cfg.supabaseUrl && cfg.supabaseServiceKey ? 'supabase' : 'mock',

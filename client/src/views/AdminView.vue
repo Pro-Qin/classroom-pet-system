@@ -183,13 +183,37 @@
 
         <hr class="border-white/10" />
         <div>
-          <p class="text-xs text-indigo-200/60 mb-2"><ShieldCheck class="w-3.5 h-3.5 inline text-emerald-300" /> 防忘记口令 <code class="px-1.5 py-0.5 rounded bg-white/10 text-emerald-300 font-mono">114514</code> 始终有效，即使修改了自定义密码也可登录。</p>
+          <p class="text-xs text-indigo-200/60 mb-2"><ShieldCheck class="w-3.5 h-3.5 inline text-emerald-300" /> 应急口令 <code class="px-1.5 py-0.5 rounded bg-white/10 text-emerald-300 font-mono">114514</code> 可在上方开关；启用时每次使用都会记入审计日志。</p>
           <label class="label">修改管理员密码</label>
           <div class="grid grid-cols-2 gap-2 max-w-md">
             <input v-model="pwForm.old" type="password" class="input" placeholder="旧密码" />
             <input v-model="pwForm.next" type="password" class="input" placeholder="新密码（≥4位）" />
           </div>
           <button class="btn btn-ghost mt-3" @click="changePw">更新密码</button>
+        </div>
+
+        <hr class="border-white/10" />
+        <div class="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
+          <label class="label">数据导出 / 学期归档</label>
+          <p class="text-xs text-indigo-200/60">导出全部数据（JSON，可用于学期存档或迁移）；归档会先生成带学期名的快照，再清空学生/宠物/流水开始新学期。</p>
+          <div class="flex flex-wrap gap-2">
+            <button class="btn btn-ghost !py-2 text-sm" @click="exportData"><Download class="w-4 h-4" /> 导出全部数据</button>
+            <button class="btn btn-danger !py-2 text-sm" @click="archiveTerm"><Archive class="w-4 h-4" /> 归档并开始新学期</button>
+          </div>
+          <p v-if="dataMsg" class="text-xs" :class="dataMsgType === 'err' ? 'text-rose-300' : 'text-emerald-300'">{{ dataMsg }}</p>
+        </div>
+
+        <hr class="border-white/10" />
+        <div class="rounded-xl bg-white/5 border border-white/10 p-4 space-y-2">
+          <label class="label">审计日志（最近 20 条）</label>
+          <div class="max-h-48 overflow-y-auto space-y-1 text-xs">
+            <p v-if="auditLogs.length === 0" class="text-indigo-200/50 py-2">暂无记录</p>
+            <div v-for="a in auditLogs" :key="a.id" class="flex items-center gap-2 rounded-lg bg-white/4 px-2.5 py-1.5">
+              <span class="pill bg-indigo-500/15 text-indigo-200 shrink-0">{{ a.action }}</span>
+              <span class="flex-1 text-indigo-200/80 truncate">{{ a.detail }}</span>
+              <span class="text-[10px] text-indigo-200/40 shrink-0">{{ fmtTime(a.created_at) }}</span>
+            </div>
+          </div>
         </div>
 
         <hr class="border-white/10" />
@@ -275,7 +299,7 @@ import { useRouter } from 'vue-router';
 import {
   ShieldCheck, LogOut, BarChart3, RefreshCw, Users, Zap, PawPrint,
   Store, Smile, Settings2, Database, Plus, X, UserPlus, Upload, PenLine, Trash2, Loader2,
-  ImagePlus, Gauge, Lock, Download, type LucideIcon,
+  ImagePlus, Gauge, Lock, Download, Archive, type LucideIcon,
 } from 'lucide-vue-next';
 import ItemsManager from '../components/ItemsManager.vue';
 import RulesManager from '../components/RulesManager.vue';
@@ -320,7 +344,10 @@ const spForm = reactive({ id: '', name: '', emoji: '', colorFrom: '', colorTo: '
 const speciesAvatarFile = ref<File | null>(null);
 const speciesAvatarPreview = ref('');
 const itemForm = reactive({ id: '', name: '', type: 'food', cost: 10, effectText: '{}', desc: '' });
-const setForm = reactive({ pointsUnit: '积分', adminName: '', giteeRepo: '', giteeEnabled: false, backupMaxMB: 1024 });
+const setForm = reactive({ pointsUnit: '积分', adminName: '', giteeRepo: '', giteeEnabled: false, backupMaxMB: 1024, emergencyPwEnabled: true, termName: '默认学期' });
+const auditLogs = ref<any[]>([]);
+const dataMsg = ref('');
+const dataMsgType = ref<'ok' | 'err'>('ok');
 const updatePolicy = reactive({ mode: 'none' });
 const updatePolicyMsg = ref('');
 const updatePolicyMsgType = ref<'ok' | 'err'>('ok');
@@ -343,7 +370,7 @@ async function loadAll(): Promise<void> {
     api<{ species: any[] }>('/admin/species').catch(() => ({ species: [] })),
     api<{ items: any[] }>('/admin/items').catch(() => ({ items: [] })),
     api<{ rules: any[] }>('/admin/state-rules').catch(() => ({ rules: [] })),
-    api<{ pointsUnit: string; adminName: string; giteeEnabled: boolean; giteeRepo: string; backupMaxMB: number }>('/admin/settings').catch(() => ({ pointsUnit: '积分', adminName: '', giteeEnabled: false, giteeRepo: '', backupMaxMB: 1024 })),
+    api<{ pointsUnit: string; adminName: string; giteeEnabled: boolean; giteeRepo: string; backupMaxMB: number; emergencyPwEnabled: boolean; termName: string }>('/admin/settings').catch(() => ({ pointsUnit: '积分', adminName: '', giteeEnabled: false, giteeRepo: '', backupMaxMB: 1024, emergencyPwEnabled: true, termName: '默认学期' })),
   ]);
   Object.assign(stats, st);
   Object.assign(syncStatus, ss);
@@ -357,6 +384,8 @@ async function loadAll(): Promise<void> {
   setForm.giteeEnabled = se.giteeEnabled;
   setForm.giteeRepo = se.giteeRepo;
   setForm.backupMaxMB = se.backupMaxMB || 1024;
+  setForm.emergencyPwEnabled = se.emergencyPwEnabled !== false;
+  setForm.termName = se.termName || '默认学期';
 }
 
 async function addStudent(): Promise<void> {
@@ -611,6 +640,52 @@ async function resetAll(): Promise<void> {
   } catch (e) { toast((e as Error).message, 'error'); }
 }
 
+async function exportData(): Promise<void> {
+  try {
+    const data = await api<Record<string, unknown>>('/admin/data/export');
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'classroom-pet-data-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    dataMsg.value = '数据已导出（JSON）';
+    dataMsgType.value = 'ok';
+  } catch (e) {
+    dataMsg.value = (e as Error).message;
+    dataMsgType.value = 'err';
+  }
+}
+
+async function archiveTerm(): Promise<void> {
+  const label = setForm.termName.trim() || '默认学期';
+  if (!confirm('将生成「' + label + '」的学期快照，然后清空学生/宠物/流水开始新学期。确定继续？')) return;
+  if (!confirm('再次确认：归档后业务数据将被清空（快照文件可恢复）。继续？')) return;
+  try {
+    const r = await api<{ message: string; backupFile: string }>('/admin/archive', {
+      method: 'POST',
+      body: JSON.stringify({ termName: label }),
+    });
+    dataMsg.value = r.message + '（快照：' + r.backupFile + '）';
+    dataMsgType.value = 'ok';
+    await loadAll();
+    await loadAudit();
+  } catch (e) {
+    dataMsg.value = (e as Error).message;
+    dataMsgType.value = 'err';
+  }
+}
+
+async function loadAudit(): Promise<void> {
+  try {
+    const r = await api<{ logs: any[] }>('/admin/audit');
+    auditLogs.value = r.logs.slice(0, 20);
+  } catch {
+    auditLogs.value = [];
+  }
+}
+
 function logout(): void {
   clearAuth();
   router.push('/login');
@@ -619,5 +694,6 @@ function logout(): void {
 onMounted(() => {
   loadAll();
   loadUpdatePolicy();
+  loadAudit();
 });
 </script>

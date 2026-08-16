@@ -1,5 +1,7 @@
 import express from 'express';
 import type { RequestHandler } from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
 import { loadConfig, updateConfig, APP_VERSION, effectiveGiteeRepo, DEFAULT_GITEE_REPO } from '../config.js';
 import { getDb, nowIso } from '../db/connection.js';
 import { getSetting, setSetting } from '../db/settings.js';
@@ -24,6 +26,35 @@ export function getTransport(): SyncTransport {
     return new SupabaseTransport(cfg.supabaseUrl, cfg.supabaseAnonKey, cfg.supabaseServiceKey);
   }
   return new MockTransport();
+}
+
+/** 异地备份：把最新本地快照上传到 Supabase Storage backups 桶（best-effort） */
+export async function uploadBackupToStorage(): Promise<{ ok: boolean; name?: string; error?: string }> {
+  const cfg = loadConfig();
+  if (!cfg.supabaseUrl || !cfg.supabaseServiceKey || !cfg.supabaseAnonKey) {
+    return { ok: false, error: '未配置 Supabase，无法异地备份' };
+  }
+  try {
+    const snaps = listSnapshots(1);
+    if (snaps.length === 0) return { ok: false, error: '没有可上传的本地备份' };
+    const file = snaps[0].file;
+    const name = 'backup-' + path.basename(file);
+    const data = fs.readFileSync(file);
+    const res = await fetch(cfg.supabaseUrl + '/storage/v1/object/backups/' + encodeURIComponent(name), {
+      method: 'POST',
+      headers: {
+        apikey: cfg.supabaseAnonKey,
+        Authorization: 'Bearer ' + cfg.supabaseServiceKey,
+        'Content-Type': 'application/octet-stream',
+      },
+      body: data,
+    });
+    if (res.ok) return { ok: true, name };
+    const text = (await res.text()).slice(0, 160);
+    return { ok: false, error: '存储上传失败 HTTP ' + res.status + ' ' + text };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
 }
 
 /**
@@ -219,6 +250,12 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
         // 不返回 backupFile 绝对路径（防路径泄露），只给是否已备份
         const { backupFile: _bf, ...safe } = result;
         res.json({ ...safe, backup: !!_bf });
+        // 异地备份（best-effort，不阻塞响应）
+        uploadBackupToStorage()
+          .then((u) => {
+            if (!u.ok && u.error) console.warn('[backup] 异地备份失败：', u.error);
+          })
+          .catch(() => {});
       } catch {
         console.error('[sync] runSync 失败');
         res.status(500).json({ error: '同步失败，请稍后重试或检查云端配置' });
@@ -362,6 +399,18 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
       });
     } catch {
       res.status(500).json({ ok: false, error: '无法连接 Supabase（网络或地址问题）' });
+    }
+  });
+
+  // 管理员手动备份：本地快照 + 异地备份（Supabase Storage）
+  app.post('/api/sync/backup', _auth, requireRole(['admin']), async (_req, res) => {
+    try {
+      const { snapshotDb } = await import('../db/backup.js');
+      snapshotDb();
+      const u = await uploadBackupToStorage();
+      res.json(u.ok ? { ok: true, name: u.name } : { ok: false, error: u.error ?? '备份失败' });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
     }
   });
 

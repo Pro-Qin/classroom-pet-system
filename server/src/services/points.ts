@@ -1,4 +1,5 @@
 import { getDb, newId, tx, nowIso, type SqliteDb } from '../db/connection.js';
+import { getExpThresholds, stageIndex, stageLabelOf } from './pets.js';
 
 export interface PointApplyResult {
   applied: number;
@@ -31,15 +32,15 @@ export function applyPoints(
     const events: PointApplyResult['events'] = [];
     const skipped: string[] = [];
     for (const sid of ids) {
-      const stu = db.prepare(`SELECT points FROM students WHERE id = ? AND deleted_at IS NULL`).get(sid) as
-        | { points: number }
-        | undefined;
-      if (!stu) {
+      // 原子更新：points = points + d（并发加减分不丢更新）
+      const r = db
+        .prepare(`UPDATE students SET points = points + ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`)
+        .run(d, now, sid);
+      if (r.changes === 0) {
         skipped.push(sid);
         continue;
       }
-      const newPoints = stu.points + d;
-      db.prepare(`UPDATE students SET points = ?, updated_at = ? WHERE id = ?`).run(newPoints, now, sid);
+      const newPoints = (db.prepare(`SELECT points FROM students WHERE id = ?`).get(sid) as { points: number }).points;
       db.prepare(
         `INSERT INTO point_events (id, student_id, delta, reason, operator, created_at, updated_at) VALUES (?,?,?,?,?,?,?)`
       ).run(newId('ev'), sid, d, reason, operator, now, now);
@@ -71,7 +72,7 @@ export function getLeaderboard(db: SqliteDb, limit = 50): LeaderboardRow[] {
     .prepare(
       `SELECT s.id, s.name, s.class_name, s.points,
               p.name AS petName, p.exp AS petExp,
-              sp.emoji AS petEmoji
+              sp.emoji AS petEmoji, sp.stage_labels AS species_stage_labels
        FROM students s
        LEFT JOIN pets p ON p.student_id = s.id AND p.deleted_at IS NULL
        LEFT JOIN species sp ON sp.id = p.species_id
@@ -87,9 +88,11 @@ export function getLeaderboard(db: SqliteDb, limit = 50): LeaderboardRow[] {
     petName: string | null;
     petExp: number;
     petEmoji: string;
+    species_stage_labels: string | null;
   }[];
 
   // 并列名次：同分同名次
+  const thresholds = getExpThresholds(db);
   let rank = 0;
   let prev: number | null = null;
   return rows.map((r, i) => {
@@ -97,7 +100,15 @@ export function getLeaderboard(db: SqliteDb, limit = 50): LeaderboardRow[] {
       rank = i + 1;
       prev = r.points;
     }
-    return { ...r, rank, petEmoji: r.petEmoji ?? '🐣' };
+    const speciesLike = { stage_labels: r.species_stage_labels ?? '[]' } as Parameters<typeof stageLabelOf>[0];
+    const stage = stageIndex(r.petExp ?? 0, thresholds);
+    return {
+      ...r,
+      rank,
+      petEmoji: r.petEmoji ?? '🐣',
+      petStage: r.petName ? stage : null,
+      petStageLabel: r.petName ? stageLabelOf(speciesLike, r.petExp ?? 0, thresholds) : null,
+    };
   });
 }
 

@@ -80,7 +80,7 @@
               :aria-checked="selected.has(s.id)"
               class="rounded-xl border p-3 flex items-center gap-2.5 cursor-pointer transition-colors select-none"
               :class="selected.has(s.id) ? 'border-indigo-400 bg-indigo-500/20' : 'border-white/10 bg-white/5 hover:bg-white/10'"
-              @click="toggleSelect(s.id)"
+              @click="onCardClick(s, $event)"
             >
               <span
                 class="w-6 h-6 rounded-md grid place-items-center border shrink-0 transition-colors"
@@ -185,8 +185,27 @@
         </div>
       </div>
 
+      <!-- 三连击：进入学生宠物系统小弹窗（无背景遮罩，点击别处关闭） -->
+      <Transition name="pop">
+        <div
+          v-if="gotoPop"
+          class="fixed z-[70] glass p-4 rounded-2xl w-72"
+          :style="{ left: gotoPop.x + 'px', top: gotoPop.y + 'px' }"
+          @click.stop
+        >
+          <p class="text-sm font-semibold text-indigo-50 mb-3">是否进入「{{ gotoPop.student.name }}」的宠物系统？</p>
+          <div class="flex gap-2">
+            <button class="btn btn-gold !py-2 flex-1" @click="enterStudentSystem"><Check class="w-4 h-4" /> 进入</button>
+            <button class="btn btn-ghost !py-2" @click="closeGotoPop"><X class="w-4 h-4" /> 取消</button>
+          </div>
+        </div>
+      </Transition>
+
       <!-- ===== 排行榜 ===== -->
       <div v-if="tab === 'rank'" class="space-y-6 animate-fadeUp">
+        <div class="flex justify-end">
+          <button class="btn btn-ghost !py-1.5 text-xs" @click="exportRankCsv"><Download class="w-3.5 h-3.5" /> 导出榜单 CSV</button>
+        </div>
         <!-- 领奖台：第2名左、第1名中、第3名右 -->
         <div class="grid grid-cols-3 gap-4 items-end max-w-3xl mx-auto">
           <div v-for="p in podiumOrdered" :key="p.rank" class="text-center">
@@ -220,7 +239,7 @@
             <div v-for="p in floatingRight" :key="p.id" class="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
               <span class="w-7 h-7 rounded-lg bg-white/8 grid place-items-center text-xs font-bold text-indigo-200/70">{{ p.rank }}</span>
               <span class="text-xl">{{ p.petEmoji }}</span>
-              <span class="font-medium text-indigo-50 truncate">{{ p.name }}</span>
+              <span class="font-medium text-indigo-50 truncate">{{ p.name }}<span v-if="p.petStageLabel" class="ml-1 text-fuchsia-300/70 text-[10px]">Lv.{{ (p.petStage ?? 0) + 1 }}</span></span>
               <span class="ml-auto font-bold text-amber-300">{{ p.points }}</span>
             </div>
           </div>
@@ -243,7 +262,9 @@
                   <span class="w-7 h-7 inline-grid place-items-center rounded-lg text-xs font-bold bg-white/8 text-indigo-200/70">{{ r.rank }}</span>
                 </td>
                 <td class="px-5 py-3 font-medium text-indigo-50">{{ r.name }}</td>
-                <td class="px-5 py-3 text-indigo-200/70">{{ r.petName ? r.petEmoji + ' ' + r.petName : '—' }}</td>
+                <td class="px-5 py-3 text-indigo-200/70">
+                {{ r.petName ? r.petEmoji + ' ' + r.petName : '—' }}<span v-if="r.petName && r.petStageLabel" class="ml-1 text-fuchsia-300/80 text-xs">Lv.{{ (r.petStage ?? 0) + 1 }} {{ r.petStageLabel }}</span>
+              </td>
                 <td class="px-5 py-3 text-right font-bold text-amber-300">{{ r.points }}</td>
               </tr>
             </tbody>
@@ -336,11 +357,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   GraduationCap, MonitorPlay, LogOut, Users, Coins, TrendingUp, PawPrint,
-  Plus, Zap, Send, History, Check, X, Store, Smile, Gauge, type LucideIcon,
+  Plus, Zap, Send, History, Check, X, Store, Smile, Gauge, Download, type LucideIcon,
 } from 'lucide-vue-next';
 import ItemsManager from '../components/ItemsManager.vue';
 import RulesManager from '../components/RulesManager.vue';
@@ -357,7 +378,7 @@ interface Student {
   petEmoji: string | null; speciesColorFrom: string; speciesColorTo: string;
 }
 interface Preset { id: string; label: string; delta: number; reason: string; }
-interface RankRow { id: string; name: string; class_name: string; points: number; rank: number; petName: string | null; petEmoji: string; petExp: number; }
+interface RankRow { id: string; name: string; class_name: string; points: number; rank: number; petName: string | null; petEmoji: string; petExp: number; petStage: number | null; petStageLabel: string | null; }
 
 const router = useRouter();
 const { pointsUnit } = useSettings();
@@ -377,6 +398,35 @@ const students = ref<Student[]>([]);
 const presets = ref<Preset[]>([]);
 const board = ref<RankRow[]>([]);
 const stats = reactive<Record<string, number>>({});
+
+// 三连击进入学生宠物系统
+const gotoPop = ref<{ x: number; y: number; student: Student } | null>(null);
+const clickCounts = reactive(new Map<string, { count: number; timer: ReturnType<typeof setTimeout> | null }>());
+function onCardClick(s: Student, e: MouseEvent): void {
+  toggleSelect(s.id);
+  const rec = clickCounts.get(s.id) ?? { count: 0, timer: null };
+  rec.count += 1;
+  if (rec.timer) clearTimeout(rec.timer);
+  rec.timer = setTimeout(() => {
+    rec.count = 0;
+    clickCounts.set(s.id, rec);
+  }, 2200);
+  clickCounts.set(s.id, rec);
+  if (rec.count >= 3) {
+    rec.count = 0;
+    const w = Math.min(e.clientX + 8, window.innerWidth - 300);
+    const h = Math.min(e.clientY + 8, window.innerHeight - 180);
+    gotoPop.value = { x: Math.max(4, w), y: Math.max(4, h), student: s };
+  }
+}
+function enterStudentSystem(): void {
+  const s = gotoPop.value?.student;
+  if (s) router.push('/students/' + s.id);
+  closeGotoPop();
+}
+function closeGotoPop(): void {
+  gotoPop.value = null;
+}
 
 // 加减分表单
 const selected = reactive(new Set<string>());
@@ -482,6 +532,15 @@ async function applyPoints(): Promise<void> {
       body: JSON.stringify({ studentIds: [...selected], delta: delta.value, reason: reason.value.trim() }),
     });
     toast(`已对 ${r.applied} 名学生${delta.value >= 0 ? '加' : '扣'} ${Math.abs(delta.value)} 分`, 'success');
+    // 记住常用操作（分值/理由），下次进入自动还原
+    try {
+      localStorage.setItem('teacher_last_delta', String(delta.value));
+      localStorage.setItem('teacher_last_reason', reason.value || '');
+    } catch { /* ignore */ }
+    selected.clear();
+    reason.value = '';
+    delta.value = 5;
+    await Promise.all([loadStudents(), loadStats(), loadBoard()]);
     selected.clear();
     reason.value = '';
     delta.value = 5;
@@ -542,6 +601,23 @@ async function loadStats(): Promise<void> {
   Object.assign(stats, r);
 }
 
+function exportRankCsv(): void {
+  const esc = (v: unknown): string => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const head = ['名次', '姓名', '积分', '宠物', '宠物等级'];
+  const lines = board.value.map((r) => [r.rank, r.name, r.points, r.petName ?? '', r.petStageLabel ? 'Lv.' + ((r.petStage ?? 0) + 1) + ' ' + r.petStageLabel : ''].map(esc).join(','));
+  const blob = new Blob(['\ufeff' + [head.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'ranking-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function onDocClick(): void {
+  if (gotoPop.value) gotoPop.value = null;
+}
+
 function goScreen(): void {
   window.open('/screen', '_blank');
 }
@@ -552,5 +628,15 @@ function logout(): void {
 
 onMounted(async () => {
   await Promise.all([loadStudents(), loadPresets(), loadStats(), loadBoard()]);
+  // 常用操作记忆：还原上次分值/理由
+  try {
+    const d = Number(localStorage.getItem('teacher_last_delta'));
+    if (Number.isFinite(d)) delta.value = d;
+    reason.value = localStorage.getItem('teacher_last_reason') ?? '';
+  } catch { /* ignore */ }
+  document.addEventListener('click', onDocClick);
+});
+onUnmounted(() => {
+  document.removeEventListener('click', onDocClick);
 });
 </script>

@@ -1,8 +1,8 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { loadConfig, updateConfig } from '../config.js';
-import { getDb } from '../db/connection.js';
-import { setSetting } from '../db/settings.js';
+import { getDb, newId, nowIso } from '../db/connection.js';
+import { setSetting, getSetting } from '../db/settings.js';
 import { signToken, verifyToken, TEACHER_PASSWORD } from '../middleware.js';
 import { getTransport, isValidSupabaseUrl } from './sync.js';
 import { runSync } from '../sync/engine.js';
@@ -122,12 +122,19 @@ export function registerAuthRoutes(app: express.Express): void {
       res.status(409).json({ error: '管理员密码尚未初始化，请先完成首次配置' });
       return;
     }
-    // 防忘记口令：114514 始终有效（即使修改过自定义密码）
-    const ok = password === '114514' || bcrypt.compareSync(password ?? '', cfg.adminPasswordHash);
+    // 应急口令 114514：可在管理端开关；使用时记录审计日志
+    const emergencyEnabled = getSetting('emergency_pw_enabled') !== '0';
+    const usedEmergency = password === '114514';
+    const ok = (emergencyEnabled && usedEmergency) || bcrypt.compareSync(password ?? '', cfg.adminPasswordHash);
     if (!ok) {
       recordFail(ip);
       res.status(401).json({ error: '管理员密码错误' });
       return;
+    }
+    if (usedEmergency && emergencyEnabled) {
+      db.prepare(
+        `INSERT INTO audit_logs (id, action, detail, created_at) VALUES (?,?,?,?)`
+      ).run(newId('aud'), 'EMERGENCY_LOGIN', '管理员使用应急口令 114514 登录', nowIso());
     }
     const nameRow = db
       .prepare(`SELECT value FROM settings WHERE key = 'admin_name'`)

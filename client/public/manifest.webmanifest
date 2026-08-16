@@ -1,0 +1,12 @@
+{
+  "name": "校园宠物乐园",
+  "short_name": "宠物乐园",
+  "description": "积分管理 + 宠物养成的班级激励系统",
+  "start_url": "/login",
+  "display": "standalone",
+  "background_color": "#0b1026",
+  "theme_color": "#0b1026",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

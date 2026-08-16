@@ -21,6 +21,7 @@ import {
   type PetRow,
 } from '../services/pets.js';
 import { getPointHistory, type LeaderboardRow } from '../services/points.js';
+import { isValidImageFile } from '../utils/upload.js';
 
 /** 学生列表卡片（登录页/学生系统共用），公开访问 */
 function listStudents(db: ReturnType<typeof getDb>) {
@@ -286,6 +287,16 @@ export function registerStudentRoutes(app: express.Express, auth: RequestHandler
     }
     if (!req.file) {
       res.status(400).json({ error: '缺少图片文件' });
+      return;
+    }
+    // 文件头校验（magic bytes），防伪装图片
+    if (!isValidImageFile(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch {
+        /* ignore */
+      }
+      res.status(400).json({ error: '图片文件无效（文件头校验失败），请重新选择图片' });
       return;
     }
     const db = getDb();

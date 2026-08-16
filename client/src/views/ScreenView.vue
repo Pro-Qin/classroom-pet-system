@@ -24,6 +24,7 @@
                 >{{ p.rank }}</span>
               </div>
               <p class="mt-4 text-3xl font-bold text-indigo-50">{{ p.name }}</p>
+              <p v-if="p.petStageLabel" class="text-base text-fuchsia-300/90 mt-0.5">Lv.{{ (p.petStage ?? 0) + 1 }} {{ p.petStageLabel }}</p>
               <p class="text-2xl text-amber-300 font-bold mt-1">{{ p.points }} {{ pointsUnit }}</p>
             </div>
           </div>
@@ -34,7 +35,7 @@
                   <td class="px-6 py-4 w-20 text-2xl font-black text-indigo-200/80">{{ r.rank }}</td>
                   <td class="px-6 py-4 font-semibold text-indigo-50 text-xl">{{ r.name }}</td>
                   <td class="px-6 py-4 text-indigo-200/70">{{ r.class_name }}</td>
-                  <td class="px-6 py-4 text-indigo-200/70 text-xl">{{ r.petEmoji }} {{ r.petName ?? '' }}</td>
+                  <td class="px-6 py-4 text-indigo-200/70 text-xl">{{ r.petEmoji }} {{ r.petName ?? '' }}<span v-if="r.petStageLabel" class="ml-2 text-base text-fuchsia-300/80">Lv.{{ (r.petStage ?? 0) + 1 }}</span></td>
                   <td class="px-6 py-4 text-right text-2xl font-bold text-amber-300">{{ r.points }}</td>
                 </tr>
               </tbody>
@@ -83,7 +84,7 @@ import { LogOut } from 'lucide-vue-next';
 import { api } from '../api';
 import { useSettings } from '../composables/settings';
 
-interface RankRow { id: string; name: string; class_name: string; points: number; rank: number; petName: string | null; petEmoji: string; petExp: number; }
+interface RankRow { id: string; name: string; class_name: string; points: number; rank: number; petName: string | null; petEmoji: string; petExp: number; petStage: number | null; petStageLabel: string | null; }
 interface StudentCard { id: string; name: string; class_name: string; petId: string | null; petName: string | null; petEmoji: string | null; speciesColorFrom: string; speciesColorTo: string; }
 interface PetWallItem extends StudentCard {
   petExp: number;

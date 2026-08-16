@@ -6,10 +6,11 @@ import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import { getDb, newId, nowIso } from '../db/connection.js';
 import { setSetting, getSetting } from '../db/settings.js';
-import { updateConfig, UPLOAD_DIR, DEFAULT_GITEE_REPO, APP_VERSION } from '../config.js';
+import { updateConfig, UPLOAD_DIR, BACKUP_DIR, DEFAULT_GITEE_REPO, APP_VERSION } from '../config.js';
 import { requireRole, verifyToken } from '../middleware.js';
 import { adoptPet, getExpThresholds } from '../services/pets.js';
 import { isValidSupabaseUrl } from './sync.js';
+import { isValidImageFile } from '../utils/upload.js';
 import { seed } from '../db/seed.js';
 
 /** 通用软删除 */
@@ -142,6 +143,15 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
   app.post('/api/admin/species/:id/avatar', auth, adminOnly, upload.single('file'), (req, res) => {
     if (!req.file) {
       res.status(400).json({ error: '缺少图片文件' });
+      return;
+    }
+    if (!isValidImageFile(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch {
+        /* ignore */
+      }
+      res.status(400).json({ error: '图片文件无效（文件头校验失败），请重新选择图片' });
       return;
     }
     const now = nowIso();
@@ -329,6 +339,54 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
     res.json({ ok: true, message: '已清空学生/宠物/流水/背包并恢复演示数据' });
   });
 
+  // ---------- 审计日志 / 数据导出 / 学期归档 ----------
+  app.get('/api/admin/audit', auth, adminOnly, (_req, res) => {
+    res.json({ logs: db().prepare(`SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100`).all() });
+  });
+
+  app.get('/api/admin/data/export', auth, adminOnly, (_req, res) => {
+    const d = db();
+    const dump = (t: string) => d.prepare(`SELECT * FROM ${t}`).all();
+    res.json({
+      exportedAt: nowIso(),
+      students: dump('students'),
+      pets: dump('pets'),
+      backpacks: dump('backpacks'),
+      pointEvents: dump('point_events'),
+      itemUseLogs: dump('item_use_logs'),
+      species: dump('species'),
+      items: dump('items'),
+      stateRules: dump('state_rules'),
+      quickPresets: dump('quick_presets'),
+    });
+  });
+
+  // 多学期归档：生成带学期名的独立快照，随后清空业务数据开始新学期（演示数据不自动恢复）
+  app.post('/api/admin/archive', auth, adminOnly, (req, res) => {
+    const { termName } = (req.body ?? {}) as { termName?: string };
+    const label = String(termName ?? '').trim() || '默认学期';
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const safe = label.replace(/[\\/:*?"<>|]/g, '_');
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    const file = path.join(BACKUP_DIR, 'term-' + safe + '-' + ts + '.db');
+    db().exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+    // 清空业务数据
+    const d = db();
+    d.prepare(`DELETE FROM point_events`).run();
+    d.prepare(`DELETE FROM item_use_logs`).run();
+    d.prepare(`DELETE FROM backpacks`).run();
+    d.prepare(`DELETE FROM pets`).run();
+    d.prepare(`DELETE FROM students`).run();
+    setSetting('term_name', label);
+    d.prepare(`INSERT INTO audit_logs (id, action, detail, created_at) VALUES (?,?,?,?)`).run(
+      newId('aud'),
+      'TERM_ARCHIVE',
+      '归档学期「' + label + '」并清空业务数据，快照：' + path.basename(file),
+      nowIso()
+    );
+    res.json({ ok: true, message: '已归档「' + label + '」并开始新学期', backupFile: path.basename(file) });
+  });
+
   // ---------- 配置导出 / 导入（管理员；便于便携迁移，密钥不入源码） ----------
   app.get('/api/admin/config/export', auth, adminOnly, (_req, res) => {
     const cfg = loadConfig();
@@ -390,14 +448,19 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
       giteeEnabled: getSetting('gitee_enabled') === '1',
       giteeRepo: DEFAULT_GITEE_REPO,
       backupMaxMB: Math.round((Number(getSetting('backup_max_bytes')) || 1073741824) / 1024 / 1024),
+      emergencyPwEnabled: getSetting('emergency_pw_enabled') !== '0',
+      termName: getSetting('term_name') ?? '默认学期',
     });
   });
   app.put('/api/admin/settings', auth, adminOnly, (req, res) => {
-    const { pointsUnit, adminName, backupMaxBytes } = (req.body ?? {}) as {
+    const { pointsUnit, adminName, backupMaxBytes, emergencyPwEnabled, termName } = (req.body ?? {}) as {
       pointsUnit?: string; adminName?: string; backupMaxBytes?: number; giteeEnabled?: boolean; giteeRepo?: string;
+      emergencyPwEnabled?: boolean; termName?: string;
     };
     if (pointsUnit !== undefined) setSetting('points_unit', String(pointsUnit).trim() || '积分');
     if (adminName !== undefined) setSetting('admin_name', String(adminName).trim() || '管理员');
+    if (emergencyPwEnabled !== undefined) setSetting('emergency_pw_enabled', emergencyPwEnabled ? '1' : '0');
+    if (termName !== undefined) setSetting('term_name', String(termName).trim() || '默认学期');
     if (backupMaxBytes !== undefined) {
       const mb = Math.max(1, Math.min(1024 * 1024, Math.round(Number(backupMaxBytes) || 1024)));
       setSetting('backup_max_bytes', String(mb * 1024 * 1024));

@@ -233,3 +233,31 @@ select option {
   -webkit-backdrop-filter: blur(18px) saturate(140%);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
+/* ---- 宠物互动彩蛋 ---- */
+@keyframes burstUp {
+  0% { opacity: 1; transform: translate(0, 0) scale(0.6); }
+  100% { opacity: 0; transform: translate(0, -48px) scale(1.25); }
+}
+.burst-emoji {
+  animation: burstUp 1.1s ease-out forwards;
+  pointer-events: none;
+}
+.burst-enter-active,
+.burst-leave-active { transition: opacity 0.3s ease; }
+.burst-leave-to { opacity: 0; }
+
+/* ---- 教师三连击小弹窗 ---- */
+.pop-enter-active,
+.pop-leave-active { transition: all 0.2s ease; }
+.pop-enter-from,
+.pop-leave-to { opacity: 0; transform: translateY(6px) scale(0.96); }
+
+/* ---- 一体机触屏优化 ---- */
+@media (pointer: coarse) {
+  .btn,
+  .pill { min-height: 2.5rem; }
+  .btn { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+  * { touch-action: manipulation; }
+  button,
+  .cursor-pointer { -webkit-tap-highlight-color: transparent; }
+}

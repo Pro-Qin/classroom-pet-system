@@ -67,9 +67,21 @@
           <template v-if="pet">
             <div class="relative mt-5 flex flex-col items-center">
               <div
-                class="relative w-40 h-40 rounded-full grid place-items-center animate-float shadow-glow"
+                class="relative w-40 h-40 rounded-full grid place-items-center animate-float shadow-glow cursor-pointer"
                 :style="{ background: `linear-gradient(135deg, ${pet.species?.colorFrom ?? '#6366f1'}, ${pet.species?.colorTo ?? '#8b5cf6'})` }"
+                @click="petInteract"
+                title="摸摸它！"
               >
+                <div class="absolute inset-0 pointer-events-none overflow-visible">
+                  <TransitionGroup name="burst">
+                    <span
+                      v-for="b in bursts"
+                      :key="b.id"
+                      class="absolute text-2xl burst-emoji"
+                      :style="{ left: b.x + '%', top: b.y + '%' }"
+                    >${b.emoji}</span>
+                  </TransitionGroup>
+                </div>
                 <img
                   v-if="pet.avatarPath"
                   :src="pet.avatarPath"
@@ -99,6 +111,7 @@
                   :style="{ width: expPercent + '%' }"
                 />
               </div>
+              <p v-if="petBubble" class="mt-2 text-xs text-fuchsia-200/90 animate-fadeUp">{{ petBubble }}</p>
             </div>
 
             <div class="mt-5 grid grid-cols-2 gap-3">
@@ -373,6 +386,32 @@ const adoptName = ref('');
 const backpackOpen = ref(false);
 const confirmItemId = ref('');
 const previewItem = ref<(Detail['backpack'][number]) | null>(null);
+
+// 宠物互动小彩蛋
+const bursts = ref<{ id: number; x: number; y: number; emoji: string }[]>([]);
+const petBubble = ref('');
+let burstSeq = 0;
+let bubbleTimer: ReturnType<typeof setTimeout> | null = null;
+const BURST_EMOJIS = ['❤️', '🍖', '⚽', '✨', '🎈', '💤', '🐾'];
+const BURST_TEXTS = ['啾～', '好开心！', '摸摸头～', '汪！', '喵～', '嘿嘿~', '咕噜咕噜…'];
+function petInteract(): void {
+  const now = Date.now();
+  for (let i = 0; i < 3; i++) {
+    burstSeq += 1;
+    bursts.value.push({
+      id: now + i,
+      x: 15 + Math.random() * 70,
+      y: 10 + Math.random() * 70,
+      emoji: BURST_EMOJIS[Math.floor(Math.random() * BURST_EMOJIS.length)],
+    });
+  }
+  setTimeout(() => {
+    bursts.value = bursts.value.filter((b) => b.id !== now && b.id !== now + 1 && b.id !== now + 2);
+  }, 1100);
+  petBubble.value = BURST_TEXTS[Math.floor(Math.random() * BURST_TEXTS.length)];
+  if (bubbleTimer) clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => (petBubble.value = ''), 1600);
+}
 
 const pet = computed(() => detail.value?.pet ?? null);
 

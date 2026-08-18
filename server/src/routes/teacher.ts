@@ -17,16 +17,10 @@ export function registerTeacherRoutes(app: express.Express, auth: RequestHandler
     res.json({ presets: rows });
   });
 
-  // 快捷预设上限：保留 5 个（教师端也可通过 + 快捷添加）
-  const MAX_PRESETS = 5;
+  // 快捷预设（教师端也可通过 + 快捷添加，无数量上限）
   app.post('/api/presets', auth, teacherOnly, (req, res) => {
     const { label, delta, reason } = (req.body ?? {}) as { label?: string; delta?: number; reason?: string };
     const db = getDb();
-    const count = (db.prepare(`SELECT COUNT(*) AS c FROM quick_presets WHERE deleted_at IS NULL`).get() as { c: number }).c;
-    if (count >= MAX_PRESETS) {
-      res.status(400).json({ error: `快捷预设最多保留 ${MAX_PRESETS} 个，请先在管理端删除不需要的预设` });
-      return;
-    }
     if (!label || !delta) {
       res.status(400).json({ error: '名称与分值必填' });
       return;

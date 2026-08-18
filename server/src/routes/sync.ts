@@ -28,6 +28,27 @@ export function getTransport(): SyncTransport {
   return new MockTransport();
 }
 
+/** 确保 backups 桶存在（不存在则自动创建，private 桶） */
+async function ensureBackupsBucket(cfg: { supabaseUrl: string; supabaseAnonKey: string; supabaseServiceKey: string }): Promise<void> {
+  const res = await fetch(cfg.supabaseUrl + '/storage/v1/bucket', {
+    method: 'POST',
+    headers: {
+      apikey: cfg.supabaseAnonKey,
+      Authorization: 'Bearer ' + cfg.supabaseServiceKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: 'backups',
+      public: false,
+    }),
+  });
+  if (res.ok) return; // 创建成功
+  const text = (await res.text()).slice(0, 160);
+  // 已存在不算错误（不同报错文案都放行）
+  if (/already|exist/i.test(text)) return;
+  throw new Error('创建 backups 桶失败 HTTP ' + res.status + ' ' + text);
+}
+
 /** 异地备份：把最新本地快照上传到 Supabase Storage backups 桶（best-effort） */
 export async function uploadBackupToStorage(): Promise<{ ok: boolean; name?: string; error?: string }> {
   const cfg = loadConfig();
@@ -35,6 +56,7 @@ export async function uploadBackupToStorage(): Promise<{ ok: boolean; name?: str
     return { ok: false, error: '未配置 Supabase，无法异地备份' };
   }
   try {
+    await ensureBackupsBucket(cfg);
     const snaps = listSnapshots(1);
     if (snaps.length === 0) return { ok: false, error: '没有可上传的本地备份' };
     const file = snaps[0].file;

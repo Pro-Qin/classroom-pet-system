@@ -85,7 +85,7 @@
       <!-- ============ 快捷理由 ============ -->
       <div v-if="tab === 'presets'" class="glass p-5 animate-fadeUp">
         <h3 class="font-bold text-indigo-50 mb-1 flex items-center gap-2"><Zap class="w-5 h-5 text-yellow-300" /> 快捷理由管理</h3>
-        <p class="text-xs text-indigo-200/60 mb-4">最多保留 5 个预设（教师端可通过 + 添加，达到上限后需先删除）</p>
+        <p class="text-xs text-indigo-200/60 mb-4">快捷理由无数量上限，教师端也可通过「+」直接添加。</p>
         <div class="flex gap-2 mb-4">
           <input v-model="preForm.label" class="input !w-48 !py-2 text-sm" placeholder="名称" />
           <input v-model.number="preForm.delta" type="number" class="input !w-24 !py-2 text-sm" placeholder="分值" />

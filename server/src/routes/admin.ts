@@ -32,11 +32,6 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
   });
   app.post('/api/admin/presets', auth, adminOnly, (req, res) => {
     const { label, delta, reason } = (req.body ?? {}) as { label?: string; delta?: number; reason?: string };
-    const count = (db().prepare(`SELECT COUNT(*) AS c FROM quick_presets WHERE deleted_at IS NULL`).get() as { c: number }).c;
-    if (count >= 5) {
-      res.status(400).json({ error: '快捷预设最多保留 5 个，请先删除不需要的预设' });
-      return;
-    }
     if (!label || !delta) {
       res.status(400).json({ error: '名称与分值必填' });
       return;

@@ -138,18 +138,26 @@
               <span class="text-indigo-200/60">当前分值：<b class="text-lg" :class="delta >= 0 ? 'text-emerald-300' : 'text-rose-300'">{{ delta > 0 ? '+' : '' }}{{ delta }}</b></span>
               <button class="btn btn-ghost !py-1 !px-2 text-xs" @click="delta = 5">恢复默认 5</button>
             </div>
-            <input v-model="reason" class="input !py-1.5 !text-sm mt-3" placeholder="加减分理由（选填）" @keyup.enter="applyPoints" />
-            <p v-if="delta === 0" class="mt-1 text-xs text-amber-300">当前分值为 0，无法提交，请用 +5 / −5 调整</p>
-            <button class="btn btn-gold w-full mt-3" :disabled="selected.size === 0 || delta === 0" @click="applyPoints">
-              <Send class="w-4 h-4" /> 确认{{ delta > 0 ? '加分' : delta < 0 ? '扣分' : '' }}（{{ selected.size }} 人）
-            </button>
+            <input v-model="reason" class="input !py-1.5 !text-sm mt-3" placeholder="加减分理由（必填）" @keyup.enter="applyPoints" />
+            <p v-if="reason.trim() === ''" class="mt-1 text-xs text-indigo-200/50">
+              好麻烦？
+              <button class="underline text-fuchsia-300 hover:text-fuchsia-200" @click="presetAddOpen = true">试试添加快捷理由！</button>
+            </p>
+            <p v-if="pointsValidation" class="mt-1 text-xs text-amber-300">{{ pointsValidation }}</p>
+            <div class="flex gap-2 mt-3">
+              <button class="btn btn-gold flex-1" @click="applyPoints">
+                <Send class="w-4 h-4" /> 确认{{ delta > 0 ? '加分' : delta < 0 ? '扣分' : '' }}（{{ selected.size }} 人）
+              </button>
+              <button v-if="!pointsValidation" class="btn btn-ghost shrink-0" title="把当前分值与理由存为快捷选项" @click="presetAddOpen = true">
+                <Plus class="w-4 h-4" /> 添加快捷理由
+              </button>
+            </div>
           </div>
 
           <!-- 快捷加减分 -->
           <div class="glass p-5">
             <h3 class="font-bold text-indigo-50 flex items-center gap-2 mb-1">
               <Zap class="w-5 h-5 text-yellow-300" /> 快捷加减分
-              <span class="text-[11px] text-indigo-200/50 font-normal">最多 5 个</span>
             </h3>
             <p class="text-xs text-indigo-200/60 mb-2">点击预设直接填入分值与理由，也可点「+」添加</p>
             <div class="flex flex-wrap gap-2 items-center">
@@ -171,11 +179,11 @@
               </button>
             </div>
             <div v-if="presetAddOpen" class="mt-3 rounded-xl bg-white/5 border border-white/10 p-3 animate-fadeUp">
-              <p class="text-xs text-indigo-200/70 mb-2">新增快捷预设<template v-if="presets.length >= 5">（已达 5 个上限，请先删除）</template></p>
+              <p class="text-xs text-indigo-200/70 mb-2">新增快捷预设（无数量上限）</p>
               <div class="flex gap-2">
                 <input v-model="newPreset.label" class="input !py-1.5 !text-sm flex-1" placeholder="名称，如：黑板报加分" @keyup.enter="addPreset" />
                 <input v-model.number="newPreset.delta" type="number" class="input !py-1.5 !text-sm !w-20 text-center" placeholder="±分" />
-                <button class="btn btn-primary !py-1.5 !px-3 text-xs" :disabled="presets.length >= 5" @click="addPreset">
+                <button class="btn btn-primary !py-1.5 !px-3 text-xs" @click="addPreset">
                   <Plus class="w-3.5 h-3.5" /> 添加
                 </button>
               </div>
@@ -450,6 +458,13 @@ let expFlashTimer: ReturnType<typeof setTimeout> | null = null;
 const historyStudent = ref('');
 const historyList = ref<{ id: string; delta: number; reason: string; created_at: string }[]>([]);
 
+const pointsValidation = computed<string | null>(() => {
+  if (selected.size === 0) return '请先选择学生（点击左侧学生卡片）';
+  if (delta.value === 0) return '当前分值为 0，无法提交，请用 +5 / −5 调整';
+  if (!reason.value.trim()) return '请填写加减分理由';
+  return null;
+});
+
 const filteredStudents = computed(() =>
   students.value.filter((s) => !searchKey.value || s.name.includes(searchKey.value))
 );
@@ -519,11 +534,15 @@ async function removePreset(p: Preset): Promise<void> {
 
 async function applyPoints(): Promise<void> {
   if (selected.size === 0) {
-    toast('请选择学生', 'error');
+    toast('请先选择学生', 'error');
     return;
   }
   if (delta.value === 0) {
     toast('分值为 0，无法提交', 'error');
+    return;
+  }
+  if (!reason.value.trim()) {
+    toast('请填写加减分理由', 'error');
     return;
   }
   try {

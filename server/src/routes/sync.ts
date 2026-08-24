@@ -72,6 +72,35 @@ export async function uploadBackupToStorage(): Promise<{ ok: boolean; name?: str
       body: data,
     });
     if (res.ok) return { ok: true, name };
+      // 自动保留策略：云端 backups 桶只保留最近 N 份（默认 10）
+      const retention = Math.max(1, Number(getSetting('cloud_backup_retention')) || 10);
+      try {
+        const listRes = await fetch(cfg.supabaseUrl + '/storage/v1/object/list/backups', {
+          method: 'POST',
+          headers: {
+            apikey: cfg.supabaseAnonKey,
+            Authorization: 'Bearer ' + cfg.supabaseServiceKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ prefix: 'backup-', limit: 200 }),
+        });
+        if (listRes.ok) {
+          const items = (await listRes.json()) as { name: string; updated_at?: string }[];
+          items.sort((a, b) => (a.updated_at ?? '').localeCompare(b.updated_at ?? ''));
+          const expired = items.slice(0, Math.max(0, items.length - retention));
+          for (const item of expired) {
+            await fetch(cfg.supabaseUrl + '/storage/v1/object/backups/' + encodeURIComponent(item.name), {
+              method: 'DELETE',
+              headers: {
+                apikey: cfg.supabaseAnonKey,
+                Authorization: 'Bearer ' + cfg.supabaseServiceKey,
+              },
+            }).catch(() => {});
+          }
+        }
+      } catch {
+        /* 清理失败不影响本次备份成功 */
+      }
     const text = (await res.text()).slice(0, 160);
     return { ok: false, error: '存储上传失败 HTTP ' + res.status + ' ' + text };
   } catch (e) {

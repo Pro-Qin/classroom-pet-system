@@ -74,12 +74,12 @@ const QUICK_PRESET_ROWS: unknown[][] = [
 ];
 
 const DEMO_STUDENTS: unknown[][] = [
-  ['s_demo1', 'D2026001', '林小满', '高一(1)班', 320],
-  ['s_demo2', 'D2026002', '周子昂', '高一(1)班', 580],
-  ['s_demo3', 'D2026003', '陈思远', '高一(1)班', 180],
-  ['s_demo4', 'D2026004', '王一诺', '高一(1)班', 440],
-  ['s_demo5', 'D2026005', '赵可欣', '高一(1)班', 260],
-  ['s_demo6', 'D2026006', '刘俊杰', '高一(1)班', 150],
+  ['s_demo1', 'D2026001', '林小满', '高一(1)班', '默认', 320],
+  ['s_demo2', 'D2026002', '周子昂', '高一(1)班', '默认', 580],
+  ['s_demo3', 'D2026003', '陈思远', '高一(1)班', '默认', 180],
+  ['s_demo4', 'D2026004', '王一诺', '高一(1)班', '默认', 440],
+  ['s_demo5', 'D2026005', '赵可欣', '高一(1)班', '默认', 260],
+  ['s_demo6', 'D2026006', '刘俊杰', '高一(1)班', '默认', 150],
 ];
 
 const DEMO_PETS: unknown[][] = [
@@ -130,11 +130,11 @@ export function seed(db?: SqliteDb): void {
     | undefined;
   if (!demoFlag && countRows(d, 'students') === 0) {
     const insS = d.prepare(
-      `INSERT INTO students (id, student_no, name, class_name, points, created_at, updated_at) VALUES (?,?,?,?,?,?,?)`
+      `INSERT INTO students (id, student_no, name, class_name, subject, points, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)`
     );
     for (const s of DEMO_STUDENTS) {
-      const [id, no, name, cls, pts] = s as [string, string, string, string, number];
-      insS.run(id, no, name, cls, pts, ts, ts);
+      const [id, no, name, cls, subj, pts] = s as [string, string, string, string, string, number];
+      insS.run(id, no, name, cls, subj, pts, ts, ts);
     }
     const insP = d.prepare(
       `INSERT INTO pets (id, student_id, species_id, name, exp, health, hungry, happy, clean, last_tick_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`

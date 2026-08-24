@@ -10,6 +10,7 @@ create table if not exists students (
   student_no text unique,
   name text not null,
   class_name text not null default '',
+    subject text not null default '',
   points bigint not null default 0,
   created_at text not null,
   updated_at text not null,

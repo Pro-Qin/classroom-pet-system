@@ -32,6 +32,9 @@ export function registerAuthRoutes(app: express.Express): void {
       supabaseServiceKey?: string;
       giteeRepo?: string;
       giteeEnabled?: boolean;
+        teacherPassword?: string;
+        activeSubject?: string;
+        subjects?: unknown;
     };
     // 安全：系统已初始化后，重设管理员密码/配置必须持有管理员 token（防局域网任意重置）
     const cfg = loadConfig();
@@ -77,6 +80,16 @@ export function registerAuthRoutes(app: express.Express): void {
 
     setSetting('first_run_done', '1');
     setSetting('admin_name', String(body.adminName ?? '').trim() || '管理员');
+  const teacherPw = String(body.teacherPassword ?? '').trim() || '123456';
+  if (teacherPw.length < 4) {
+    res.status(400).json({ error: '教师口令至少需要 4 位' });
+    return;
+  }
+  setSetting('teacher_password', teacherPw);
+  if (body.subjects !== undefined && Array.isArray(body.subjects)) {
+    setSetting('subjects_config', JSON.stringify(body.subjects));
+  }
+  if (body.activeSubject !== undefined) setSetting('active_subject', String(body.activeSubject).trim());
     getDb()
       .prepare(
         `INSERT INTO settings (key, value, updated_at) VALUES ('first_run_done','1',?) 
@@ -107,8 +120,8 @@ export function registerAuthRoutes(app: express.Express): void {
       return;
     }
     if (role === 'teacher') {
-      if (password !== TEACHER_PASSWORD) {
-        recordFail(ip);
+        const teacherPw = getSetting('teacher_password') ?? TEACHER_PASSWORD;
+        if (password !== teacherPw) {
         res.status(401).json({ error: '教师口令错误' });
         return;
       }

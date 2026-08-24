@@ -1,5 +1,6 @@
 import { getDb, newId, tx, nowIso, type SqliteDb } from '../db/connection.js';
 import { getExpThresholds, stageIndex, stageLabelOf } from './pets.js';
+import { getActiveSubject } from './subjects.js';
 
 export interface PointApplyResult {
   applied: number;
@@ -76,11 +77,11 @@ export function getLeaderboard(db: SqliteDb, limit = 50): LeaderboardRow[] {
        FROM students s
        LEFT JOIN pets p ON p.student_id = s.id AND p.deleted_at IS NULL
        LEFT JOIN species sp ON sp.id = p.species_id
-       WHERE s.deleted_at IS NULL
+       WHERE s.deleted_at IS NULL AND (s.subject = ? OR s.subject = '')
        ORDER BY s.points DESC, s.name ASC
        LIMIT ?`
     )
-    .all(limit) as {
+    .all(getActiveSubject(), limit) as {
     id: string;
     name: string;
     class_name: string;

@@ -21,6 +21,7 @@ export const SCHEMA_SQL: string[] = [
     student_no TEXT UNIQUE,
     name TEXT NOT NULL,
     class_name TEXT NOT NULL DEFAULT '',
+    subject TEXT NOT NULL DEFAULT '',
     points INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -136,6 +137,18 @@ export const SCHEMA_SQL: string[] = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_logs(created_at)`,
 
+  `CREATE TABLE IF NOT EXISTS error_reports (
+    id TEXT PRIMARY KEY,
+    level TEXT NOT NULL DEFAULT 'error',
+    message TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT '',
+    stack TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    info TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_error_time ON error_reports(created_at)`,
+
   `CREATE TABLE IF NOT EXISTS sync_meta (
     id TEXT PRIMARY KEY,
     last_pull_at TEXT NOT NULL DEFAULT '',
@@ -175,6 +188,13 @@ export function migrate(db?: SqliteDb): void {
   // 幂等增量迁移：species 增加 avatar_path（旧库升级）
   try {
     d.exec(`ALTER TABLE species ADD COLUMN avatar_path TEXT`);
+  } catch {
+    /* 列已存在 */
+  }
+
+  // 幂等增量迁移：students 增加 subject（旧库升级，按科目隔离）
+  try {
+    d.exec(`ALTER TABLE students ADD COLUMN subject TEXT NOT NULL DEFAULT ''`);
   } catch {
     /* 列已存在 */
   }

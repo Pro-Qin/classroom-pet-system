@@ -22,6 +22,7 @@ import {
 } from '../services/pets.js';
 import { getPointHistory, type LeaderboardRow } from '../services/points.js';
 import { isValidImageFile } from '../utils/upload.js';
+import { getActiveSubject } from '../services/subjects.js';
 
 /** 学生列表卡片（登录页/学生系统共用），公开访问 */
 function listStudents(db: ReturnType<typeof getDb>) {
@@ -33,10 +34,10 @@ function listStudents(db: ReturnType<typeof getDb>) {
        FROM students s
        LEFT JOIN pets p ON p.student_id = s.id AND p.deleted_at IS NULL
        LEFT JOIN species sp ON sp.id = p.species_id
-       WHERE s.deleted_at IS NULL
+        WHERE s.deleted_at IS NULL AND (s.subject = ? OR s.subject = '')
        ORDER BY s.class_name ASC, s.student_no ASC`
     )
-    .all() as unknown as {
+    .all(getActiveSubject()) as unknown as {
     id: string;
     student_no: string;
     name: string;
@@ -78,6 +79,9 @@ function getStudentDetail(db: ReturnType<typeof getDb>, studentId: string) {
     .prepare(`SELECT * FROM students WHERE id = ? AND deleted_at IS NULL`)
     .get(studentId) as Record<string, unknown> | undefined;
   if (!s) return null;
+    // 科目隔离：当前科目不匹配且不是未分科学生时视为不存在
+    const active = getActiveSubject();
+    if (s.subject && s.subject !== active) return null;
   const petRow = db
     .prepare(`SELECT * FROM pets WHERE student_id = ? AND deleted_at IS NULL`)
     .get(studentId) as PetRow | undefined;
@@ -128,6 +132,21 @@ function getStudentDetail(db: ReturnType<typeof getDb>, studentId: string) {
   const items = (db
     .prepare(`SELECT * FROM items WHERE deleted_at IS NULL ORDER BY sort ASC`)
     .all() as { id: string }[]).filter((i) => (seenItems.has(i.id) ? false : (seenItems.add(i.id), true)));
+  // 积分趋势（最近 30 天，按天累计）
+  const since = new Date(Date.now() - 29 * 24 * 3600 * 1000).toISOString();
+  const trendRows = db
+    .prepare(
+      `SELECT substr(created_at,1,10) AS day, COALESCE(SUM(delta),0) AS delta
+       FROM point_events WHERE student_id = ? AND deleted_at IS NULL AND created_at >= ?
+       GROUP BY day ORDER BY day ASC`
+    )
+    .all(studentId, since) as { day: string; delta: number }[];
+  const trendMap = new Map(trendRows.map((r) => [r.day, r.delta]));
+  const trend: { day: string; delta: number }[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    trend.push({ day: d, delta: trendMap.get(d) ?? 0 });
+  }
   return {
     student: {
       id: s.id,
@@ -141,6 +160,7 @@ function getStudentDetail(db: ReturnType<typeof getDb>, studentId: string) {
     backpack,
     items,
     history: getPointHistory(db, studentId, 60),
+      trend,
   };
 }
 

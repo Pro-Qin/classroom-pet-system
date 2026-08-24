@@ -4,6 +4,9 @@
       <div class="max-w-6xl mx-auto px-5 py-3 text-center">
         <h1 class="font-bold text-indigo-50">学生系统<span v-if="detail" class="text-indigo-200/60 font-normal"> · {{ detail.student.name }}</span></h1>
         <p class="text-xs text-indigo-200/50">查看宠物 · 商店购物 · 积分流水</p>
+          <a v-if="updateInfo.hasUpdate" :href="updateInfo.url" target="_blank" class="inline-flex items-center gap-1 mt-1 pill !px-2.5 !py-1 text-[10px] bg-amber-500/20 text-amber-200 border border-amber-400/30 hover:bg-amber-500/30">
+            <Download class="w-3 h-3" /> 发现新版本 {{ updateInfo.latestVersion }}
+          </a>
       </div>
     </header>
 
@@ -240,6 +243,15 @@
             <History class="w-5 h-5 text-sky-300" /> 我的积分流水
             <span class="ml-auto pill bg-white/10 text-indigo-200/80">共 {{ detail.history.length }} 条</span>
           </h3>
+            <div v-if="detail.trend && detail.trend.length" class="mb-4 h-20 flex items-end gap-[2px] overflow-hidden">
+              <div
+                v-for="p in detail.trend"
+                :key="p.day"
+                class="flex-1 min-w-[3px] rounded-t bg-gradient-to-t from-sky-500/50 to-fuchsia-400/70"
+                :style="{ height: Math.max(3, (Math.abs(p.delta) / Math.max(1, ...detail.trend.map(x => Math.abs(x.delta)))) * 100) + '%' }"
+                :title="p.day + ' ' + p.delta"
+              />
+            </div>
           <div v-if="detail.history.length === 0" class="py-6 text-center text-indigo-200/50">暂无记录</div>
           <ul v-else class="space-y-2 max-h-80 overflow-y-auto pr-1">
             <li
@@ -331,7 +343,7 @@ import {
   ChevronLeft, Star, PawPrint, Edit3, ImagePlus, Store, Coins, Backpack, History, Trophy, X, Check,
   Apple, Cake, Milk, Fish, Sparkles, ShowerHead, Volleyball, CircleDot, Cross, FlaskConical,
   BookOpen, Smile, Moon, MoonStar, Flame, BatteryLow, CloudRain, Utensils, Shirt, Zap, SmilePlus,
-  Thermometer, type LucideIcon,
+  Thermometer, Download, type LucideIcon,
 } from 'lucide-vue-next';
 import { api, upload } from '../api';
 import { toast } from '../composables/toast';
@@ -368,6 +380,7 @@ interface Detail {
   backpack: { item_id: string; qty: number; name: string; icon: string; type: string; effect: string; desc: string }[];
   items: { id: string; name: string; icon: string; type: string; cost: number; effect: string; desc: string }[];
   history: { id: string; delta: number; reason: string; operator: string; created_at: string }[];
+    trend?: { day: string; delta: number }[];
 }
 
 const route = useRoute();
@@ -376,6 +389,7 @@ const { pointsUnit } = useSettings();
 const { headerEl } = useFrostHeader();
 const detail = ref<Detail | null>(null);
 const loadError = ref('');
+const updateInfo = ref<{ hasUpdate: boolean; latestVersion: string; url: string }>({ hasUpdate: false, latestVersion: '', url: '' });
 const renameOpen = ref(false);
 const newName = ref('');
 const studentId = route.params.id as string;
@@ -617,9 +631,18 @@ async function doAdopt(): Promise<void> {
     toast((e as Error).message, 'error');
   }
 }
+async function checkUpdate(): Promise<void> {
+  try {
+    const r = await api<{ hasUpdate: boolean; latestVersion: string; downloadUrl?: string }>('/updates/check');
+    updateInfo.value = { hasUpdate: !!r.hasUpdate, latestVersion: r.latestVersion, url: r.downloadUrl || 'https://gitee.com/am-zzq/classroom-pet-system/releases' };
+  } catch {
+    updateInfo.value = { hasUpdate: false, latestVersion: '', url: '' };
+  }
+}
 
 onMounted(() => {
   load();
   loadRankBase();
+  checkUpdate();
 });
 </script>

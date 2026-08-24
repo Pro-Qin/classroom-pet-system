@@ -69,6 +69,9 @@
           <div class="rounded-xl bg-white/5 p-4 border border-white/10">
             <p class="font-semibold text-indigo-100 mb-3">批量导入</p>
             <textarea v-model="importText" rows="4" class="input text-xs" placeholder="每行格式：姓名,初始积分（示例：张三,0）" />
+              <input type="file" class="hidden" accept=".csv,.xlsx,.xls,text/csv" ref="importFileRef" @change="onImportFile" />
+              <button class="btn btn-ghost mt-3 !py-2 text-sm" @click="importFileRef?.click()"><FileSpreadsheet class="w-4 h-4" /> 选择 CSV / Excel 导入</button>
+              <span v-if="importFileName" class="ml-2 text-xs text-indigo-200/70">{{ importFileName }}</span>
             <button class="btn btn-ghost mt-3" @click="importStudents"><Upload class="w-4 h-4" /> 导入</button>
           </div>
         </div>
@@ -77,6 +80,13 @@
             <p class="flex-1 font-medium text-indigo-50 truncate">{{ s.name }}</p>
             <p class="w-16 text-right font-bold text-amber-300">{{ s.points }}</p>
             <button class="btn btn-ghost !py-1 text-xs" @click="editPoints(s)"><PenLine class="w-3.5 h-3.5" /> 改分</button>
+          <div class="rounded-xl bg-white/5 p-4 border border-white/10 mt-5">
+            <p class="font-semibold text-indigo-100 mb-2 flex items-center gap-2"><ImagePlus class="w-4 h-4" /> 批量上传头像</p>
+            <p class="text-xs text-indigo-200/60 mb-2">按学生列表顺序依次选择头像图片，文件数量必须与当前列表学生数一致。</p>
+            <input type="file" multiple accept="image/*" class="hidden" ref="avatarFileRef" @change="uploadAvatars" />
+            <button class="btn btn-ghost !py-2 text-sm" @click="avatarFileRef?.click()"><Upload class="w-4 h-4" /> 选择头像（多选）</button>
+            <span v-if="avatarMsg" class="ml-2 text-xs" :class="avatarMsgType === 'err' ? 'text-rose-300' : 'text-emerald-300'">{{ avatarMsg }}</span>
+          </div>
             <button class="btn btn-danger !py-1 text-xs" @click="delStudent(s)"><Trash2 class="w-3.5 h-3.5" /> 删除</button>
           </div>
         </div>
@@ -179,6 +189,41 @@
           <label class="label">本地备份存储上限（MB，默认 1024）</label>
           <input v-model.number="setForm.backupMaxMB" type="number" class="input !w-44" min="1" placeholder="1024" />
         </div>
+
+          <div>
+            <label class="label">教师口令（管理员可查看/修改）</label>
+            <div class="flex gap-2">
+              <input v-model="setForm.teacherPassword" class="input !w-44" placeholder="123456" />
+              <button class="btn btn-ghost !py-2 text-sm" @click="saveTeacherPassword"><KeyRound class="w-4 h-4" /> 保存教师口令</button>
+            </div>
+            <p class="text-xs text-indigo-200/50 mt-1">当前教师口令：<code class="px-1.5 py-0.5 rounded bg-white/10 text-amber-300">{{ setForm.teacherPassword || '123456' }}</code></p>
+          </div>
+          <div>
+            <label class="label">当前科目</label>
+            <select v-model="setForm.activeSubject" class="input !w-56">
+              <option v-for="s in setForm.subjects" :key="s.name" :value="s.name">{{ s.name }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="label">科目列表与个性化</label>
+            <div v-for="(s, i) in setForm.subjects" :key="i" class="rounded-xl bg-white/5 border border-white/10 p-3 mb-2 text-sm">
+              <div class="flex items-center gap-2 mb-1">
+                <input v-model="s.name" class="input !py-1 !text-sm !w-32" />
+                <label class="flex items-center gap-1 text-xs"><input v-model="s.sync" type="checkbox" class="accent-indigo-400" /> 同步</label>
+                <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.points" type="checkbox" class="accent-indigo-400" /> 积分</label>
+                <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.pets" type="checkbox" class="accent-indigo-400" /> 宠物</label>
+                <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.shop" type="checkbox" class="accent-indigo-400" /> 商店</label>
+                <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.rank" type="checkbox" class="accent-indigo-400" /> 排行</label>
+                <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.avatar" type="checkbox" class="accent-indigo-400" /> 头像</label>
+                <button class="ml-auto text-rose-300" @click="removeSubject(i)"><Trash2 class="w-3.5 h-3.5" /></button>
+              </div>
+            </div>
+            <button class="btn btn-ghost !py-2 text-sm" @click="addSubject"><Plus class="w-4 h-4" /> 添加科目</button>
+          </div>
+          <div>
+            <label class="label">云端备份保留份数（默认 10）</label>
+            <input v-model.number="setForm.cloudBackupRetention" type="number" class="input !w-44" min="1" max="365" placeholder="10" />
+          </div>
         <button class="btn btn-primary" @click="saveSettings">保存设置</button>
 
         <hr class="border-white/10" />
@@ -216,6 +261,20 @@
             </div>
           </div>
         </div>
+
+          <hr class="border-white/10" />
+          <div class="rounded-xl bg-white/5 border border-white/10 p-4 space-y-2">
+            <label class="label">前端错误上报（最近 50 条）</label>
+            <div class="max-h-48 overflow-y-auto space-y-1 text-xs">
+              <p v-if="errorReports.length === 0" class="text-indigo-200/50 py-2">暂无上报</p>
+              <div v-for="e in errorReports" :key="e.id" class="flex items-start gap-2 rounded-lg bg-white/4 px-2.5 py-1.5">
+                <span class="pill bg-rose-500/15 text-rose-200 shrink-0">{{ e.level }}</span>
+                <span class="flex-1 text-indigo-200/80 truncate" :title="e.stack || e.message">{{ e.message }}</span>
+                <span class="text-[10px] text-indigo-200/40 shrink-0">{{ fmtTime(e.created_at) }}</span>
+              </div>
+            </div>
+            <button class="btn btn-ghost !py-1.5 text-xs" @click="loadErrors">刷新</button>
+          </div>
 
         <hr class="border-white/10" />
         <div class="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
@@ -300,7 +359,7 @@ import { useRouter } from 'vue-router';
 import {
   ShieldCheck, LogOut, BarChart3, RefreshCw, Users, Zap, PawPrint,
   Store, Smile, Settings2, Database, Plus, X, UserPlus, Upload, PenLine, Trash2, Loader2,
-  ImagePlus, Gauge, Lock, Download, Archive, type LucideIcon,
+  ImagePlus, Gauge, Lock, Download, Archive, FileSpreadsheet, KeyRound, type LucideIcon,
 } from 'lucide-vue-next';
 import ItemsManager from '../components/ItemsManager.vue';
 import RulesManager from '../components/RulesManager.vue';
@@ -340,13 +399,19 @@ const rules = ref<any[]>([]);
 
 const stuForm = reactive({ name: '', studentNo: '', className: '', points: undefined as number | undefined, petSpeciesId: '', petName: '' });
 const importText = ref('');
+const importFileRef = ref<HTMLInputElement | null>(null);
+const importFileName = ref('');
+const avatarFileRef = ref<HTMLInputElement | null>(null);
+const avatarMsg = ref('');
+const avatarMsgType = ref<'ok' | 'err'>('ok');
 const preForm = reactive({ label: '', delta: 5, reason: '' });
 const spForm = reactive({ id: '', name: '', emoji: '', colorFrom: '', colorTo: '' });
 const speciesAvatarFile = ref<File | null>(null);
 const speciesAvatarPreview = ref('');
 const itemForm = reactive({ id: '', name: '', type: 'food', cost: 10, effectText: '{}', desc: '' });
-const setForm = reactive({ pointsUnit: '积分', adminName: '', giteeRepo: '', giteeEnabled: false, backupMaxMB: 1024, emergencyPwEnabled: true, termName: '默认学期' });
+const setForm = reactive({ pointsUnit: '积分', adminName: '', giteeRepo: '', giteeEnabled: false, backupMaxMB: 1024, emergencyPwEnabled: true, termName: '默认学期', teacherPassword: '123456', activeSubject: '默认', cloudBackupRetention: 10, subjects: [{ name: '默认', sync: true, enabled: { points: true, pets: true, shop: true, rank: true, avatar: true } }] });
 const auditLogs = ref<any[]>([]);
+const errorReports = ref<any[]>([]);
 const dataMsg = ref('');
 const dataMsgType = ref<'ok' | 'err'>('ok');
 const updatePolicy = reactive({ mode: 'none' });
@@ -371,7 +436,7 @@ async function loadAll(): Promise<void> {
     api<{ species: any[] }>('/admin/species').catch(() => ({ species: [] })),
     api<{ items: any[] }>('/admin/items').catch(() => ({ items: [] })),
     api<{ rules: any[] }>('/admin/state-rules').catch(() => ({ rules: [] })),
-    api<{ pointsUnit: string; adminName: string; giteeEnabled: boolean; giteeRepo: string; backupMaxMB: number; emergencyPwEnabled: boolean; termName: string }>('/admin/settings').catch(() => ({ pointsUnit: '积分', adminName: '', giteeEnabled: false, giteeRepo: '', backupMaxMB: 1024, emergencyPwEnabled: true, termName: '默认学期' })),
+    api<{ pointsUnit: string; adminName: string; giteeEnabled: boolean; giteeRepo: string; backupMaxMB: number; emergencyPwEnabled: boolean; termName: string; teacherPassword: string; activeSubject: string; cloudBackupRetention: number; subjects: any[] }>('/admin/settings').catch(() => ({ pointsUnit: '积分', adminName: '', giteeEnabled: false, giteeRepo: '', backupMaxMB: 1024, emergencyPwEnabled: true, termName: '默认学期', teacherPassword: '123456', activeSubject: '默认', cloudBackupRetention: 10, subjects: [] })),
   ]);
   Object.assign(stats, st);
   Object.assign(syncStatus, ss);
@@ -411,6 +476,87 @@ async function importStudents(): Promise<void> {
     importText.value = '';
     await loadAll();
   } catch (e) { toast((e as Error).message, 'error'); }
+}
+async function onImportFile(e: Event): Promise<void> {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  importFileName.value = file.name;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const token = localStorage.getItem('pet_token');
+    const res = await fetch('/api/admin/students/import-file', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || '导入失败');
+    toast(`导入成功 ${data.added} 人${data.errors?.length ? `，${data.errors.length} 条失败` : ''}`, data.errors?.length ? 'error' : 'success');
+    importFileName.value = '';
+    await loadAll();
+  } catch (e) {
+    toast((e as Error).message, 'error');
+  } finally {
+    input.value = '';
+  }
+}
+async function uploadAvatars(e: Event): Promise<void> {
+  const input = e.target as HTMLInputElement;
+  const files = Array.from(input.files ?? []);
+  if (files.length === 0) return;
+  if (files.length !== adminStudents.value.length) {
+    toast(`头像数量需与学生数量一致（当前列表 ${adminStudents.value.length} 人）`, 'error');
+    input.value = '';
+    return;
+  }
+  const studentIds = adminStudents.value.map((s: any) => s.id);
+  const fd = new FormData();
+  fd.append('studentIds', JSON.stringify(studentIds));
+  for (const f of files) fd.append('files', f);
+  avatarMsgType.value = 'ok';
+  avatarMsg.value = '上传中…';
+  try {
+    const token = localStorage.getItem('pet_token');
+    const res = await fetch('/api/admin/students/avatars', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || '上传失败');
+    avatarMsg.value = `上传成功 ${data.uploaded} 人`;
+    await loadAll();
+  } catch (e) {
+    avatarMsgType.value = 'err';
+    avatarMsg.value = (e as Error).message;
+  } finally {
+    input.value = '';
+  }
+}
+async function loadErrors(): Promise<void> {
+  try {
+    const r = await api<{ errors: any[] }>('/admin/errors');
+    errorReports.value = r.errors ?? [];
+  } catch {
+    errorReports.value = [];
+  }
+}
+async function saveTeacherPassword(): Promise<void> {
+  try {
+    await api('/admin/settings', { method: 'PUT', body: JSON.stringify({ teacherPassword: setForm.teacherPassword }) });
+    toast('教师口令已保存', 'success');
+  } catch (e) {
+    toast((e as Error).message, 'error');
+  }
+}
+function addSubject(): void {
+  setForm.subjects.push({ name: '新科目', sync: true, enabled: { points: true, pets: true, shop: true, rank: true, avatar: true } });
+}
+function removeSubject(i: number): void {
+  setForm.subjects.splice(i, 1);
+  if (!setForm.subjects.some((s: any) => s.name === setForm.activeSubject)) setForm.activeSubject = setForm.subjects[0]?.name || '默认';
 }
 
 async function editPoints(s: any): Promise<void> {

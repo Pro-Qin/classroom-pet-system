@@ -7,12 +7,13 @@ import multer from 'multer';
 import { getDb, newId, nowIso } from '../db/connection.js';
 import { setSetting, getSetting } from '../db/settings.js';
 import { updateConfig, UPLOAD_DIR, BACKUP_DIR, DEFAULT_GITEE_REPO, APP_VERSION } from '../config.js';
-import { requireRole, verifyToken } from '../middleware.js';
-import { adoptPet, getExpThresholds } from '../services/pets.js';
+import { requireRole, verifyToken, TEACHER_PASSWORD } from '../middleware.js';
+import { adoptPet, getExpThresholds, setPetAvatar, type PetRow } from '../services/pets.js';
 import { isValidSupabaseUrl } from './sync.js';
 import { isValidImageFile } from '../utils/upload.js';
 import { seed } from '../db/seed.js';
-
+import { getActiveSubject, getSubjectsConfig, saveSubjectsConfig, setActiveSubject } from '../services/subjects.js';
+import * as XLSX from 'xlsx';
 /** 通用软删除 */
 function softDelete(db: ReturnType<typeof getDb>, table: string, id: string): boolean {
   const now = nowIso();
@@ -21,11 +22,41 @@ function softDelete(db: ReturnType<typeof getDb>, table: string, id: string): bo
     .run(now, now, id);
   return r.changes > 0;
 }
-
 export function registerAdminRoutes(app: express.Express, auth: RequestHandler): void {
   const adminOnly = requireRole(['admin']);
   const db = () => getDb();
 
+  // ---------- 前端错误上报（公开接口，供一体机远程排查） ----------
+  app.post('/api/errors/report', (req, res) => {
+    const { level, message, source, stack, url, info } = (req.body ?? {}) as {
+      level?: string; message?: string; source?: string; stack?: string; url?: string; info?: unknown;
+    };
+    if (!message) {
+      res.status(400).json({ error: '错误信息不能为空' });
+      return;
+    }
+    const now = nowIso();
+    db().prepare(
+      `INSERT INTO error_reports (id, level, message, source, stack, url, info, created_at) VALUES (?,?,?,?,?,?,?,?)`
+    ).run(
+      newId('err'),
+      String(level ?? 'error').slice(0, 20),
+      String(message).slice(0, 1000),
+      String(source ?? '').slice(0, 200),
+      String(stack ?? '').slice(0, 4000),
+      String(url ?? '').slice(0, 500),
+      JSON.stringify(info ?? {}).slice(0, 4000),
+      now
+    );
+    res.json({ ok: true });
+  });
+  app.get('/api/admin/errors', auth, adminOnly, (_req, res) => {
+    res.json({ errors: db().prepare(`SELECT * FROM error_reports ORDER BY created_at DESC LIMIT 100`).all() });
+  });
+  app.delete('/api/admin/errors', auth, adminOnly, (_req, res) => {
+    db().prepare(`DELETE FROM error_reports`).run();
+    res.json({ ok: true });
+  });
   // ---------- 快捷理由 CRUD ----------
   app.get('/api/admin/presets', auth, adminOnly, (_req, res) => {
     res.json({ presets: db().prepare(`SELECT * FROM quick_presets WHERE deleted_at IS NULL ORDER BY sort`).all() });
@@ -64,7 +95,6 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
   app.delete('/api/admin/presets/:id', auth, adminOnly, (req, res) => {
     res.json({ ok: softDelete(db(), 'quick_presets', req.params.id) });
   });
-
   // ---------- 宠物种类 CRUD ----------
   app.get('/api/admin/species', auth, adminOnly, (_req, res) => {
     res.json({ species: db().prepare(`SELECT * FROM species WHERE deleted_at IS NULL ORDER BY sort`).all() });
@@ -114,8 +144,6 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
   app.delete('/api/admin/species/:id', auth, adminOnly, (req, res) => {
     res.json({ ok: softDelete(db(), 'species', req.params.id) });
   });
-
-
   // ---------- 宠物种类头像上传（管理员） ----------
   const ALLOWED_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
   const ALLOWED_MIMES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
@@ -155,7 +183,6 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
       .run('/uploads/' + req.file.filename, now, req.params.id);
     res.json({ ok: true, url: '/uploads/' + req.file.filename });
   });
-
   // ---------- 道具 CRUD ----------
   app.get('/api/admin/items', auth, requireRole(['admin', 'teacher']), (_req, res) => {
     // 按 id 去重（历史数据可能残留重复商品）
@@ -203,7 +230,6 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
   app.delete('/api/admin/items/:id', auth, requireRole(['admin', 'teacher']), (req, res) => {
     res.json({ ok: softDelete(db(), 'items', req.params.id) });
   });
-
   // ---------- 状态规则 CRUD ----------
   app.get('/api/admin/state-rules', auth, requireRole(['admin', 'teacher']), (_req, res) => {
     res.json({ rules: db().prepare(`SELECT * FROM state_rules WHERE deleted_at IS NULL ORDER BY sort`).all() });
@@ -224,7 +250,6 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
       );
     res.json({ ok: true });
   });
-
   // ---------- 学生管理 ----------
   app.get('/api/admin/students', auth, adminOnly, (_req, res) => {
     res.json({
@@ -235,22 +260,23 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
   });
   // 新增学生（可选同时领养宠物）
   app.post('/api/admin/students', auth, adminOnly, (req, res) => {
-    const { studentNo, name, className, points, petSpeciesId, petName } = (req.body ?? {}) as {
-      studentNo?: string; name?: string; className?: string; points?: number;
+    const { studentNo, name, className, subject, points, petSpeciesId, petName } = (req.body ?? {}) as {
+      studentNo?: string; name?: string; className?: string; subject?: string; points?: number;
       petSpeciesId?: string; petName?: string;
     };
     if (!name) {
       res.status(400).json({ error: '姓名必填' });
       return;
     }
+    const activeSubject = getActiveSubject();
     const now = nowIso();
     const id = newId('stu');
     try {
       db()
         .prepare(
-          `INSERT INTO students (id, student_no, name, class_name, points, created_at, updated_at) VALUES (?,?,?,?,?,?,?)`
+      `INSERT INTO students (id, student_no, name, class_name, subject, points, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)`
         )
-        .run(id, String(studentNo ?? '').trim() || null, String(name).trim(), String(className ?? '').trim(), Math.round(points ?? 0), now, now);
+        .run(id, String(studentNo ?? '').trim() || null, String(name).trim(), String(className ?? '').trim(), String(subject ?? '').trim() || activeSubject, Math.round(points ?? 0), now, now);
     } catch (e) {
       res.status(409).json({ error: `添加失败：${(e as Error).message.includes('UNIQUE') ? '学号已存在' : (e as Error).message}` });
       return;
@@ -263,14 +289,15 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
     res.json({ ok: true, id, petId });
   });
   app.put('/api/admin/students/:id', auth, adminOnly, (req, res) => {
-    const { studentNo, name, className, points } = (req.body ?? {}) as {
-      studentNo?: string; name?: string; className?: string; points?: number;
+    const { studentNo, name, className, subject, points } = (req.body ?? {}) as {
+      studentNo?: string; name?: string; className?: string; subject?: string; points?: number;
     };
     const now = nowIso();
     const sets: string[] = [];
     const vals: (string | number | null)[] = [];
     if (name !== undefined) { sets.push('name=?'); vals.push(String(name).trim()); }
-    if (className !== undefined) { sets.push('class_name=?'); vals.push(String(className).trim()); }
+      if (className !== undefined) { sets.push('class_name=?'); vals.push(String(className).trim()); }
+      if (subject !== undefined) { sets.push('subject=?'); vals.push(String(subject).trim()); }
     if (studentNo !== undefined) { sets.push('student_no=?'); vals.push(String(studentNo).trim() || null); }
     if (points !== undefined) { sets.push('points=?'); vals.push(Math.round(points)); }
     if (sets.length === 0) {
@@ -285,21 +312,78 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
   app.delete('/api/admin/students/:id', auth, adminOnly, (req, res) => {
     res.json({ ok: softDelete(db(), 'students', req.params.id) });
   });
-
   // 批量导入学生：[{ studentNo, name, className, points }]
-  app.post('/api/admin/students/import', auth, adminOnly, (req, res) => {
-    const { students } = (req.body ?? {}) as {
-      students?: { studentNo?: string; name?: string; className?: string; points?: number }[];
-    };
-    if (!Array.isArray(students) || students.length === 0) {
-      res.status(400).json({ error: '请提供学生数组' });
+
+  // CSV / Excel 批量导入学生（文件上传）
+  const importUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+  app.post('/api/admin/students/import-file', auth, adminOnly, importUpload.single('file'), (req, res) => {
+    if (!req.file || !req.file.buffer) {
+      res.status(400).json({ error: '请选择 CSV / Excel 文件' });
+      return;
+    }
+    const activeSubject = getActiveSubject();
+    let rows: Record<string, string | number>[] = [];
+    const fileExt = (req.file.originalname || '').toLowerCase();
+    try {
+      if (fileExt.endsWith('.csv')) {
+        const csv = req.file.buffer.toString('utf-8');
+        const lines = csv.split(/\r?\n/).filter((l) => l.trim() !== '');
+        if (lines.length === 0) throw new Error('CSV 为空');
+        const header = lines[0].split(',').map((h) => h.trim().replace(/^["']|["']$/g, ''));
+        rows = lines.slice(1).map((line) => {
+          const cells = line.split(',').map((c) => c.trim().replace(/^["']|["']$/g, ''));
+          const obj: Record<string, string | number> = {};
+          header.forEach((h, idx) => (obj[h] = cells[idx] ?? ''));
+          return obj;
+        });
+      } else {
+        const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json<Record<string, string | number>>(sheet, { defval: '' });
+      }
+    } catch (e) {
+      res.status(400).json({ error: '文件解析失败：' + (e as Error).message });
       return;
     }
     const now = nowIso();
     let added = 0;
     const errors: string[] = [];
     const stmt = db().prepare(
-      `INSERT INTO students (id, student_no, name, class_name, points, created_at, updated_at) VALUES (?,?,?,?,?,?,?)`
+      `INSERT INTO students (id, student_no, name, class_name, subject, points, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)`
+    );
+    for (const r of rows) {
+      const name = String(r['姓名'] ?? r['name'] ?? '').trim();
+      if (!name) {
+        errors.push('存在无姓名的学生，已跳过');
+        continue;
+      }
+      const no = String(r['学号'] ?? r['studentNo'] ?? r['student_no'] ?? '').trim();
+      const cls = String(r['班级'] ?? r['className'] ?? r['class_name'] ?? '').trim();
+      const subj = String(r['科目'] ?? r['subject'] ?? activeSubject).trim();
+      const pts = Number(r['初始积分'] ?? r['points'] ?? r['积分'] ?? 0) || 0;
+      try {
+        stmt.run(newId('stu'), no || null, name, cls, subj, Math.round(pts), now, now);
+        added++;
+      } catch {
+        errors.push(`${name} 导入失败（学号可能重复）`);
+      }
+    }
+    res.json({ ok: true, added, errors, subject: activeSubject });
+  });
+  app.post('/api/admin/students/import', auth, adminOnly, (req, res) => {
+    const { students } = (req.body ?? {}) as {
+      students?: { studentNo?: string; name?: string; className?: string; subject?: string; points?: number }[];
+    };
+    if (!Array.isArray(students) || students.length === 0) {
+      res.status(400).json({ error: '请提供学生数组' });
+      return;
+    }
+    const activeSubject = getActiveSubject();
+    const now = nowIso();
+    let added = 0;
+    const errors: string[] = [];
+    const stmt = db().prepare(
+      `INSERT INTO students (id, student_no, name, class_name, subject, points, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)`
     );
     for (const s of students) {
       if (!s.name) {
@@ -307,7 +391,7 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
         continue;
       }
       try {
-        stmt.run(newId('stu'), String(s.studentNo ?? '').trim() || null, String(s.name).trim(), String(s.className ?? '').trim(), s.points ?? 0, now, now);
+        stmt.run(newId('stu'), String(s.studentNo ?? '').trim() || null, String(s.name).trim(), String(s.className ?? '').trim(), String(s.subject ?? '').trim() || activeSubject, s.points ?? 0, now, now);
         added++;
       } catch (e) {
         errors.push(`${s.name} 导入失败（学号可能重复）`);
@@ -316,7 +400,48 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
     res.json({ ok: true, added, errors });
   });
 
-
+  // 批量上传学生自定义头像：files 与 studentIds 按顺序一一对应
+  app.post('/api/admin/students/avatars', auth, adminOnly, upload.array('files', 100), (req, res) => {
+    const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+    let studentIds: string[] = [];
+    try {
+      studentIds = JSON.parse((req.body as Record<string, string>).studentIds ?? '[]');
+    } catch {
+      /* ignore */
+    }
+    if (files.length === 0 || studentIds.length !== files.length) {
+      res.status(400).json({ error: '请选择数量与学生名单一致的图片' });
+      return;
+    }
+    const d = db();
+    const okCount: string[] = [];
+    const errors: { studentId: string; error: string }[] = [];
+    files.forEach((file, idx) => {
+      const studentId = studentIds[idx];
+      if (!studentId) {
+        errors.push({ studentId: '-', error: '缺少学生 ID' });
+        return;
+      }
+      if (!isValidImageFile(file.path)) {
+        try { fs.unlinkSync(file.path); } catch { /* ignore */ }
+        errors.push({ studentId, error: '图片文件无效' });
+        return;
+      }
+      const petRow = d.prepare(`SELECT * FROM pets WHERE student_id = ? AND deleted_at IS NULL`).get(studentId) as PetRow | undefined;
+      if (!petRow) {
+        try { fs.unlinkSync(file.path); } catch { /* ignore */ }
+        errors.push({ studentId, error: '该学生还没有宠物' });
+        return;
+      }
+      const oldAvatar = petRow.avatar_path;
+      setPetAvatar(d, petRow.id, '/uploads/' + file.filename);
+      if (oldAvatar?.startsWith('/uploads/')) {
+        try { fs.unlinkSync(path.join(UPLOAD_DIR, path.basename(oldAvatar))); } catch { /* ignore */ }
+      }
+      okCount.push(studentId);
+    });
+    res.json({ ok: true, uploaded: okCount.length, errors });
+  });
   // ---------- 重置所有业务数据（管理员） ----------
   app.post('/api/admin/reset', auth, adminOnly, (_req, res) => {
     const d = db();
@@ -333,12 +458,10 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
     seed(d);
     res.json({ ok: true, message: '已清空学生/宠物/流水/背包并恢复演示数据' });
   });
-
   // ---------- 审计日志 / 数据导出 / 学期归档 ----------
   app.get('/api/admin/audit', auth, adminOnly, (_req, res) => {
     res.json({ logs: db().prepare(`SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100`).all() });
   });
-
   app.get('/api/admin/data/export', auth, adminOnly, (_req, res) => {
     const d = db();
     const dump = (t: string) => d.prepare(`SELECT * FROM ${t}`).all();
@@ -355,7 +478,6 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
       quickPresets: dump('quick_presets'),
     });
   });
-
   // 多学期归档：生成带学期名的独立快照，随后清空业务数据开始新学期（演示数据不自动恢复）
   app.post('/api/admin/archive', auth, adminOnly, (req, res) => {
     const { termName } = (req.body ?? {}) as { termName?: string };
@@ -381,7 +503,6 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
     );
     res.json({ ok: true, message: '已归档「' + label + '」并开始新学期', backupFile: path.basename(file) });
   });
-
   // 清空全部业务数据（学生/宠物/流水/背包），不恢复演示数据；先生成快照再清空
   app.post('/api/admin/clear-data', auth, adminOnly, (req, res) => {
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
@@ -402,7 +523,6 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
     );
     res.json({ ok: true, message: '已清空学生/宠物/流水/背包（不保留演示数据），快照：' + path.basename(file) });
   });
-
   // ---------- 配置导出 / 导入（管理员；便于便携迁移，密钥不入源码） ----------
   app.get('/api/admin/config/export', auth, adminOnly, (_req, res) => {
     const cfg = loadConfig();
@@ -449,7 +569,6 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
     }
     res.json({ ok: true, message: '配置已导入' });
   });
-
   // ---------- 系统设置 ----------
   // GET 公开：仅返回展示类配置（积分单位名/管理员名/Gitee 启用状态），
   // 供登录前页面（学生详情/登录页）显示，避免未登录 401 控制台噪音；
@@ -466,18 +585,37 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
       backupMaxMB: Math.round((Number(getSetting('backup_max_bytes')) || 1073741824) / 1024 / 1024),
       emergencyPwEnabled: getSetting('emergency_pw_enabled') !== '0',
       termName: getSetting('term_name') ?? '默认学期',
+        cloudBackupRetention: Number(getSetting('cloud_backup_retention')) || 10,
+        teacherPassword: session?.role === 'admin' ? (getSetting('teacher_password') ?? TEACHER_PASSWORD) : undefined,
+        activeSubject: getSetting('active_subject') ?? '',
+        subjects: (() => { try { return JSON.parse(getSetting('subjects_config') ?? '[]'); } catch { return []; } })(),
     });
   });
   app.put('/api/admin/settings', auth, adminOnly, (req, res) => {
-    const { pointsUnit, adminName, backupMaxBytes, emergencyPwEnabled, termName } = (req.body ?? {}) as {
+      const { pointsUnit, adminName, backupMaxBytes, emergencyPwEnabled, termName, teacherPassword, activeSubject, subjects, cloudBackupRetention } = (req.body ?? {}) as {
       pointsUnit?: string; adminName?: string; backupMaxBytes?: number; giteeEnabled?: boolean; giteeRepo?: string;
       emergencyPwEnabled?: boolean; termName?: string;
+      teacherPassword?: string; activeSubject?: string; subjects?: unknown; cloudBackupRetention?: number;
     };
     if (pointsUnit !== undefined) setSetting('points_unit', String(pointsUnit).trim() || '积分');
     if (adminName !== undefined) setSetting('admin_name', String(adminName).trim() || '管理员');
     if (emergencyPwEnabled !== undefined) setSetting('emergency_pw_enabled', emergencyPwEnabled ? '1' : '0');
     if (termName !== undefined) setSetting('term_name', String(termName).trim() || '默认学期');
-    if (backupMaxBytes !== undefined) {
+      if (teacherPassword !== undefined) {
+        const tp = String(teacherPassword).trim();
+        if (tp.length < 4) {
+          res.status(400).json({ error: '教师口令至少需要 4 位' });
+          return;
+        }
+        setSetting('teacher_password', tp);
+      }
+      if (activeSubject !== undefined) setSetting('active_subject', String(activeSubject).trim());
+      if (subjects !== undefined) setSetting('subjects_config', JSON.stringify(subjects));
+      if (cloudBackupRetention !== undefined) {
+        const n = Math.max(1, Math.min(365, Math.round(Number(cloudBackupRetention) || 10)));
+        setSetting('cloud_backup_retention', String(n));
+      }
+      if (backupMaxBytes !== undefined) {
       const mb = Math.max(1, Math.min(1024 * 1024, Math.round(Number(backupMaxBytes) || 1024)));
       setSetting('backup_max_bytes', String(mb * 1024 * 1024));
     }
@@ -488,6 +626,27 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
     res.json({ ok: true });
   });
 
+  // ---------- 科目隔离与个性化设置 ----------
+  app.get('/api/subjects', auth, requireRole(['teacher', 'admin']), (_req, res) => {
+    res.json({ activeSubject: getActiveSubject(), subjects: getSubjectsConfig() });
+  });
+  app.put('/api/subjects', auth, requireRole(['teacher', 'admin']), (req, res) => {
+    const { subjects, activeSubject } = (req.body ?? {}) as { subjects?: unknown; activeSubject?: string };
+    if (subjects !== undefined) {
+      if (!Array.isArray(subjects)) {
+        res.status(400).json({ error: 'subjects 必须是数组' });
+        return;
+      }
+      saveSubjectsConfig(subjects as Parameters<typeof saveSubjectsConfig>[0]);
+    }
+    if (activeSubject !== undefined) setActiveSubject(String(activeSubject).trim());
+    res.json({ ok: true, activeSubject: getActiveSubject(), subjects: getSubjectsConfig() });
+  });
+  app.put('/api/subjects/active', auth, requireRole(['teacher', 'admin']), (req, res) => {
+    const { name } = (req.body ?? {}) as { name?: string };
+    setActiveSubject(String(name ?? '').trim());
+    res.json({ ok: true, activeSubject: getActiveSubject() });
+  });
   // 修改管理员密码（需旧密码校验）
   app.post('/api/admin/password', auth, adminOnly, (req, res) => {
     const { oldPassword, newPassword } = (req.body ?? {}) as { oldPassword?: string; newPassword?: string };
@@ -509,5 +668,4 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
     res.json({ ok: true });
   });
 }
-
 import { loadConfig } from '../config.js';

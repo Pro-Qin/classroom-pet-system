@@ -15,7 +15,8 @@
     "bcryptjs": "^2.4.3",
     "express": "^4.21.2",
     "multer": "^2.2.0",
-    "nanoid": "^5.0.9"
+    "nanoid": "^5.0.9",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

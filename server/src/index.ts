@@ -13,6 +13,7 @@ import { registerTeacherRoutes } from './routes/teacher.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerSyncRoutes } from './routes/sync.js';
 import { requireAuth } from './middleware.js';
+import { logger } from './utils/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export function createApp(): express.Express {
@@ -36,6 +37,28 @@ export function createApp(): express.Express {
   seed();
 
   app.get('/api/health', (_req, res) => {
+    app.get('/api/health', (_req, res) => {
+      let dbOk = false;
+      try {
+        dbOk = getDb().prepare('SELECT 1 AS ok').get()?.ok === 1;
+      } catch {
+        dbOk = false;
+      }
+      let diskFreeMB: number | null = null;
+      try {
+        diskFreeMB = Math.round(fs.statfsSync(path.resolve(ROOT)).bavail * (fs.statfsSync(path.resolve(ROOT)).bsize || 4096) / 1024 / 1024);
+      } catch {
+        diskFreeMB = null;
+      }
+      res.json({
+        ok: dbOk,
+        version: APP_VERSION,
+        time: nowIso(),
+        uptime: Math.round(process.uptime()),
+        db: dbOk ? 'ok' : 'error',
+        diskFreeMB,
+      });
+    });
     res.json({ ok: true, version: APP_VERSION, time: nowIso() });
   });
 

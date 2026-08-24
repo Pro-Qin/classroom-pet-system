@@ -3,11 +3,32 @@ import type { Request, RequestHandler } from 'express';
 import { getDb, newId, nowIso } from '../db/connection.js';
 import { applyPoints, getLeaderboard, getPointHistory } from '../services/points.js';
 import { addPetExp, getSpecies, getExpThresholds, DEFAULT_EXP_THRESHOLDS, stageIndex, stageLabelOf, stageLabelsOf, type PetRow } from '../services/pets.js';
-import { setSetting } from '../db/settings.js';
+import { setSetting, getSetting } from '../db/settings.js';
 import { requireRole, type Session } from '../middleware.js';
+import { getActiveSubject } from '../services/subjects.js';
 
 export function registerTeacherRoutes(app: express.Express, auth: RequestHandler): void {
   const teacherOnly = requireRole(['teacher', 'admin']);
+
+  // 修改教师口令（教师或管理员；教师需提供当前口令，管理员可直接设置）
+  app.post('/api/teacher/password', auth, teacherOnly, (req, res) => {
+    const { oldPassword, newPassword } = (req.body ?? {}) as { oldPassword?: string; newPassword?: string };
+    const current = getSetting('teacher_password') ?? '123456';
+    const session = (req as Request & { session?: Session }).session;
+    if (session?.role !== 'admin' && oldPassword !== current) {
+      res.status(401).json({ error: '当前教师口令错误' });
+      return;
+    }
+    const next = String(newPassword ?? '').trim();
+    if (next.length < 4) {
+      res.status(400).json({ error: '教师口令至少需要 4 位' });
+      return;
+    }
+    setSetting('teacher_password', next);
+    getDb().prepare(`INSERT INTO audit_logs (id, action, detail, created_at) VALUES (?,?,?,?)`)
+      .run(newId('aud'), 'TEACHER_PASSWORD_CHANGED', `教师口令已由 ${session?.role ?? 'unknown'} 修改`, nowIso());
+    res.json({ ok: true });
+  });
 
   // 快捷理由预设（教师/管理端可读）
   app.get('/api/presets', auth, (_req, res) => {
@@ -167,17 +188,41 @@ export function registerTeacherRoutes(app: express.Express, auth: RequestHandler
   });
 
   // 教师端总览：学生数/总积分/平均分/最高分
+  // 教师端积分趋势（最近 30 天，按当前科目）
+  app.get('/api/teacher/trend', auth, (_req, res) => {
+    const db = getDb();
+    const active = getActiveSubject();
+    const since = new Date(Date.now() - 29 * 24 * 3600 * 1000).toISOString();
+    const rows = db
+      .prepare(
+        `SELECT substr(p.created_at,1,10) AS day, COALESCE(SUM(p.delta),0) AS delta
+         FROM point_events p
+         JOIN students s ON s.id = p.student_id
+         WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL
+           AND (s.subject = ? OR s.subject = '') AND p.created_at >= ?
+         GROUP BY day ORDER BY day ASC`
+      )
+      .all(active, since) as { day: string; delta: number }[];
+    const map = new Map(rows.map((r) => [r.day, r.delta]));
+    const trend: { day: string; delta: number }[] = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 24 * 3600 * 1000);
+      const key = d.toISOString().slice(0, 10);
+      trend.push({ day: key, delta: map.get(key) ?? 0 });
+    }
+    res.json({ trend });
+  });
   app.get('/api/teacher/stats', auth, (_req, res) => {
     const db = getDb();
     const st = db
       .prepare(
         `SELECT COUNT(*) AS cnt, COALESCE(SUM(points),0) AS total, COALESCE(AVG(points),0) AS avg, COALESCE(MAX(points),0) AS max
-         FROM students WHERE deleted_at IS NULL`
+         FROM students WHERE deleted_at IS NULL AND (subject = ? OR subject = '')`
       )
-      .get() as { cnt: number; total: number; avg: number; max: number };
+      .get(getActiveSubject()) as { cnt: number; total: number; avg: number; max: number };
     const petCnt = db
-      .prepare(`SELECT COUNT(*) AS c FROM pets WHERE deleted_at IS NULL`)
-      .get() as { c: number };
+      .prepare(`SELECT COUNT(*) AS c FROM pets p JOIN students s ON s.id = p.student_id WHERE p.deleted_at IS NULL AND (s.subject = ? OR s.subject = '')`)
+      .get(getActiveSubject()) as { c: number };
     res.json({ ...st, avg: Math.round(st.avg * 10) / 10, pets: petCnt.c });
   });
 }

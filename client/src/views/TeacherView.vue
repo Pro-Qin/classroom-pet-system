@@ -60,6 +60,77 @@
     </div>
 
     <main class="max-w-7xl mx-auto px-5 pt-5">
+        <!-- ===== 仪表盘 ===== -->
+        <div v-if="tab === 'dash'" class="space-y-5 animate-fadeUp">
+          <div class="glass p-5">
+            <h3 class="font-bold text-indigo-50 mb-4 flex items-center gap-2"><TrendingUp class="w-5 h-5 text-emerald-300" /> 积分趋势（近 30 天）</h3>
+            <div class="w-full h-48 flex items-end gap-[2px] overflow-x-auto">
+              <div
+                v-for="p in trendData"
+                :key="p.day"
+                class="flex-1 min-w-[6px] rounded-t bg-gradient-to-t from-indigo-500/60 to-fuchsia-400/80 hover:bg-fuchsia-300"
+                :style="{ height: Math.max(4, (Math.abs(p.delta) / maxTrend) * 100) + '%' }"
+                :title="p.day + ' ' + p.delta"
+              />
+            </div>
+            <p class="text-xs text-indigo-200/50 mt-2">柱高表示当天增减分绝对值；悬停查看具体日期。</p>
+          </div>
+          <div class="glass p-5">
+            <h3 class="font-bold text-indigo-50 mb-4 flex items-center gap-2"><Settings2 class="w-5 h-5 text-slate-300" /> 当前科目</h3>
+            <div class="flex flex-wrap gap-2 items-center">
+              <select v-model="activeSubject" class="input !w-48 !py-2 text-sm" @change="changeSubject">
+                <option v-for="s in subjects" :key="s.name" :value="s.name">{{ s.name }}</option>
+              </select>
+              <span class="text-xs text-indigo-200/60">切换后教师端只显示该科目学生</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== 设置 ===== -->
+        <div v-if="tab === 'settings'" class="glass p-5 max-w-2xl animate-fadeUp space-y-5">
+          <h3 class="font-bold text-indigo-50 flex items-center gap-2"><Settings2 class="w-5 h-5 text-slate-300" /> 教师设置</h3>
+          <div>
+            <label class="label">修改教师口令</label>
+            <div class="grid grid-cols-2 gap-2 max-w-md">
+              <input v-model="pwForm.old" type="password" class="input" placeholder="当前口令" />
+              <input v-model="pwForm.next" type="password" class="input" placeholder="新口令（≥4位）" />
+            </div>
+            <button class="btn btn-ghost mt-3 !py-2 text-sm" @click="changeTeacherPassword"><KeyRound class="w-4 h-4" /> 修改口令</button>
+          </div>
+          <div>
+            <label class="label">科目与个性化</label>
+            <div v-for="(s, i) in subjects" :key="i" class="rounded-xl bg-white/5 border border-white/10 p-3 mb-2">
+              <div class="flex gap-2 items-center text-sm">
+                <span class="font-semibold text-indigo-100">{{ s.name }}</span>
+                <label class="ml-auto flex items-center gap-1 text-xs text-indigo-200/70">
+                  <input v-model="s.sync" type="checkbox" class="accent-indigo-400" /> 同步
+                </label>
+                <label class="flex items-center gap-1 text-xs text-indigo-200/70">
+                  <input v-model="s.enabled.points" type="checkbox" class="accent-indigo-400" /> 积分
+                </label>
+                <label class="flex items-center gap-1 text-xs text-indigo-200/70">
+                  <input v-model="s.enabled.pets" type="checkbox" class="accent-indigo-400" /> 宠物
+                </label>
+                <label class="flex items-center gap-1 text-xs text-indigo-200/70">
+                  <input v-model="s.enabled.shop" type="checkbox" class="accent-indigo-400" /> 商店
+                </label>
+                <label class="flex items-center gap-1 text-xs text-indigo-200/70">
+                  <input v-model="s.enabled.rank" type="checkbox" class="accent-indigo-400" /> 排行
+                </label>
+                <label class="flex items-center gap-1 text-xs text-indigo-200/70">
+                  <input v-model="s.enabled.avatar" type="checkbox" class="accent-indigo-400" /> 头像
+                </label>
+              </div>
+            </div>
+            <button class="btn btn-ghost !py-2 text-sm" @click="saveSubjects"><Save class="w-4 h-4" /> 保存科目设置</button>
+            <span v-if="subjectMsg" class="text-xs ml-2" :class="subjectMsgType === 'err' ? 'text-rose-300' : 'text-emerald-300'">{{ subjectMsg }}</span>
+          </div>
+          <div>
+            <label class="label">版本更新</label>
+            <p v-if="updateInfo" class="text-sm text-indigo-200/80">{{ updateInfo }}</p>
+            <button class="btn btn-ghost !py-2 text-sm" @click="checkUpdate"><RefreshCw class="w-4 h-4" /> 检查更新</button>
+          </div>
+        </div>
       <!-- ===== 加减分 ===== -->
       <div v-if="tab === 'points'" class="grid lg:grid-cols-3 gap-6 animate-fadeUp">
         <!-- 学生选择 -->
@@ -150,6 +221,11 @@
               </button>
               <button v-if="!pointsValidation" class="btn btn-ghost shrink-0" title="把当前分值与理由存为快捷选项" @click="presetAddOpen = true">
                 <Plus class="w-4 h-4" /> 添加快捷理由
+              </button>
+            </div>
+            <div class="mt-3">
+              <button class="btn btn-ghost w-full !py-2 text-sm" @click="bulkReward">
+                <Gift class="w-4 h-4" /> 批量发奖：给当前筛选的全部学生 +5
               </button>
             </div>
           </div>
@@ -369,7 +445,7 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   GraduationCap, MonitorPlay, LogOut, Users, Coins, TrendingUp, PawPrint,
-  Plus, Zap, Send, History, Check, X, Store, Smile, Gauge, Download, type LucideIcon,
+  Plus, Zap, Send, History, Check, X, Store, Smile, Gauge, Download, Settings2, KeyRound, Save, RefreshCw, Gift, type LucideIcon,
 } from 'lucide-vue-next';
 import ItemsManager from '../components/ItemsManager.vue';
 import RulesManager from '../components/RulesManager.vue';
@@ -391,8 +467,8 @@ interface RankRow { id: string; name: string; class_name: string; points: number
 const router = useRouter();
 const { pointsUnit } = useSettings();
 const { headerEl } = useFrostHeader();
-const tab = ref<'points' | 'rank' | 'exp' | 'history' | 'items' | 'rules' | 'levels'>('points');
-const tabs: { key: 'points' | 'rank' | 'exp' | 'history' | 'items' | 'rules' | 'levels'; label: string; icon: LucideIcon }[] = [
+const tab = ref<'points' | 'rank' | 'exp' | 'history' | 'items' | 'rules' | 'levels' | 'dash' | 'settings'>('points');
+const tabs: { key: 'points' | 'rank' | 'exp' | 'history' | 'items' | 'rules' | 'levels' | 'dash' | 'settings'; label: string; icon: LucideIcon }[] = [
   { key: 'points', label: '加减分', icon: Plus as LucideIcon },
   { key: 'rank', label: '排行榜', icon: TrendingUp as LucideIcon },
   { key: 'exp', label: '宠物经验', icon: PawPrint as LucideIcon },
@@ -406,6 +482,14 @@ const students = ref<Student[]>([]);
 const presets = ref<Preset[]>([]);
 const board = ref<RankRow[]>([]);
 const stats = reactive<Record<string, number>>({});
+const trendData = ref<{ day: string; delta: number }[]>([]);
+const maxTrend = computed(() => Math.max(1, ...trendData.value.map((p) => Math.abs(p.delta))));
+const subjects = ref<{ name: string; sync: boolean; enabled: { points: boolean; pets: boolean; shop: boolean; rank: boolean; avatar: boolean } }[]>([]);
+const activeSubject = ref('');
+const pwForm = reactive({ old: '', next: '' });
+const subjectMsg = ref('');
+const subjectMsgType = ref<'ok' | 'err'>('ok');
+const updateInfo = ref('');
 
 // 三连击进入学生宠物系统
 const gotoPop = ref<{ x: number; y: number; student: Student } | null>(null);
@@ -479,12 +563,13 @@ const fmtTime = (s: string): string => new Date(s).toLocaleString('zh-CN', { hou
 const podiumColor = (rank: number): string =>
   rank === 1 ? '#fbbf24' : rank === 2 ? '#94a3b8' : '#fb923c';
 
-function switchTab(key: 'points' | 'rank' | 'exp' | 'history' | 'items' | 'rules' | 'levels'): void {
+function switchTab(key: 'points' | 'rank' | 'exp' | 'history' | 'items' | 'rules' | 'levels' | 'dash' | 'settings'): void {
   tab.value = key;
   if (key === 'rank' && board.value.length === 0) loadBoard();
   if (key === 'history') historyList.value = [];
-}
-
+  if (key === 'dash' && trendData.value.length === 0) loadTrend();
+  if (key === 'settings' && subjects.value.length === 0) loadSubjects();
+  }
 function toggleSelect(id: string): void {
   if (selected.has(id)) selected.delete(id);
   else selected.add(id);
@@ -568,6 +653,17 @@ async function applyPoints(): Promise<void> {
     toast((e as Error).message, 'error');
   }
 }
+async function bulkReward(): Promise<void> {
+  if (filteredStudents.value.length === 0) {
+    toast('当前没有可发奖的学生', 'error');
+    return;
+  }
+  selected.clear();
+  for (const s of filteredStudents.value) selected.add(s.id);
+  delta.value = 5;
+  reason.value = '批量发奖';
+  await applyPoints();
+}
 
 async function giveExp(s: Student): Promise<void> {
   if (!s.petId) return;
@@ -618,6 +714,61 @@ async function loadBoard(): Promise<void> {
 async function loadStats(): Promise<void> {
   const r = await api<Record<string, number>>('/teacher/stats');
   Object.assign(stats, r);
+}
+async function loadTrend(): Promise<void> {
+  try {
+    const r = await api<{ trend: { day: string; delta: number }[] }>('/teacher/trend');
+    trendData.value = r.trend ?? [];
+  } catch {
+    trendData.value = [];
+  }
+}
+async function loadSubjects(): Promise<void> {
+  try {
+    const r = await api<{ activeSubject: string; subjects: typeof subjects.value }>('/subjects');
+    activeSubject.value = r.activeSubject;
+    subjects.value = r.subjects;
+  } catch (e) {
+    subjectMsg.value = (e as Error).message;
+    subjectMsgType.value = 'err';
+  }
+}
+async function saveSubjects(): Promise<void> {
+  try {
+    await api('/subjects', { method: 'PUT', body: JSON.stringify({ subjects: subjects.value, activeSubject: activeSubject.value }) });
+    subjectMsg.value = '已保存';
+    subjectMsgType.value = 'ok';
+  } catch (e) {
+    subjectMsg.value = (e as Error).message;
+    subjectMsgType.value = 'err';
+  }
+}
+async function changeSubject(): Promise<void> {
+  try {
+    await api('/subjects/active', { method: 'PUT', body: JSON.stringify({ name: activeSubject.value }) });
+    await Promise.all([loadStudents(), loadStats(), loadBoard(), loadTrend()]);
+    toast('已切换科目', 'success');
+  } catch (e) {
+    toast((e as Error).message, 'error');
+  }
+}
+async function changeTeacherPassword(): Promise<void> {
+  try {
+    await api('/teacher/password', { method: 'POST', body: JSON.stringify({ oldPassword: pwForm.old, newPassword: pwForm.next }) });
+    pwForm.old = '';
+    pwForm.next = '';
+    toast('教师口令已修改', 'success');
+  } catch (e) {
+    toast((e as Error).message, 'error');
+  }
+}
+async function checkUpdate(): Promise<void> {
+  try {
+    const r = await api<{ currentVersion: string; latestVersion: string; hasUpdate: boolean; note: string }>('/updates/check');
+    updateInfo.value = r.hasUpdate ? `发现新版本 ${r.latestVersion}，请到 Gitee 下载` : `当前 ${r.currentVersion}，已是最新`;
+  } catch (e) {
+    updateInfo.value = (e as Error).message;
+  }
 }
 
 function exportRankCsv(): void {

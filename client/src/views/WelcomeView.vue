@@ -76,6 +76,34 @@
             <label class="label">确认密码</label>
             <input v-model="form.confirm" type="password" class="input" placeholder="再次输入" />
           </div>
+            <div>
+              <label class="label">教师口令（默认 123456，可修改）</label>
+              <input v-model="form.teacherPassword" class="input" placeholder="123456" />
+            </div>
+            <div>
+              <label class="label">当前科目名称（可后续在教师/管理端增加）</label>
+              <input v-model="form.subjectName" class="input" placeholder="例如：语文 / 数学 / 默认" />
+            </div>
+            <div class="grid grid-cols-2 gap-2 text-xs text-indigo-200/80">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input v-model="form.subjectSync" type="checkbox" class="accent-indigo-400" /> 该科目参与云端同步
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input v-model="form.subjectFeatures.points" type="checkbox" class="accent-indigo-400" /> 允许积分
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input v-model="form.subjectFeatures.pets" type="checkbox" class="accent-indigo-400" /> 允许宠物
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input v-model="form.subjectFeatures.shop" type="checkbox" class="accent-indigo-400" /> 允许商店
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input v-model="form.subjectFeatures.rank" type="checkbox" class="accent-indigo-400" /> 允许排行榜
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input v-model="form.subjectFeatures.avatar" type="checkbox" class="accent-indigo-400" /> 允许头像上传
+              </label>
+            </div>
           <p v-if="pwError" class="text-sm text-rose-300">{{ pwError }}</p>
         </div>
         <div class="mt-8 flex justify-between">
@@ -128,6 +156,10 @@ const form = reactive({
   adminName: '',
   adminPassword: '',
   confirm: '',
+    teacherPassword: '123456',
+    subjectName: '默认',
+    subjectSync: true,
+    subjectFeatures: { points: true, pets: true, shop: true, rank: true, avatar: true },
 });
 
 const steps = [
@@ -186,6 +218,9 @@ async function submit(): Promise<void> {
       body: JSON.stringify({
         adminPassword: form.adminPassword,
         adminName: form.adminName,
+          teacherPassword: form.teacherPassword || '123456',
+          activeSubject: form.subjectName.trim() || '默认',
+          subjects: [{ name: form.subjectName.trim() || '默认', sync: form.subjectSync, enabled: { ...form.subjectFeatures } }],
         // 三个输入框全空 = 自动离线模式（不发送云端配置）
         ...(form.supabaseUrl.trim() ? { supabaseUrl: form.supabaseUrl.trim() } : {}),
         ...(form.supabaseAnonKey.trim() ? { supabaseAnonKey: form.supabaseAnonKey.trim() } : {}),

@@ -22,7 +22,7 @@ import {
 } from '../services/pets.js';
 import { getPointHistory, type LeaderboardRow } from '../services/points.js';
 import { isValidImageFile } from '../utils/upload.js';
-import { getActiveSubject } from '../services/subjects.js';
+import { getActiveSubject, subjectFeatureEnabled } from '../services/subjects.js';
 
 /** 学生列表卡片（登录页/学生系统共用），公开访问 */
 function listStudents(db: ReturnType<typeof getDb>) {
@@ -216,6 +216,10 @@ export function registerStudentRoutes(app: express.Express, auth: RequestHandler
   // 领养宠物（学生选种类 + 自定义名）
   app.post('/api/students/:id/pet/adopt', (req, res) => {
     const { speciesId, name } = (req.body ?? {}) as { speciesId?: string; name?: string };
+      if (!subjectFeatureEnabled('pets')) {
+        res.status(403).json({ error: '当前科目已禁用宠物功能' });
+        return;
+      }
     if (!speciesId) {
       res.status(400).json({ error: '请选择宠物种类' });
       return;
@@ -245,6 +249,10 @@ export function registerStudentRoutes(app: express.Express, auth: RequestHandler
 
   // 使用道具
   app.post('/api/students/:id/pet/use-item', (req, res) => {
+      if (!subjectFeatureEnabled('shop')) {
+        res.status(403).json({ error: '当前科目已禁用商店/道具功能' });
+        return;
+      }
     const { itemId } = (req.body ?? {}) as { itemId?: string };
     if (!itemId) {
       res.status(400).json({ error: '缺少道具 id' });
@@ -261,6 +269,10 @@ export function registerStudentRoutes(app: express.Express, auth: RequestHandler
   // 积分购买道具
   app.post('/api/students/:id/pet/buy-item', (req, res) => {
     const { itemId } = (req.body ?? {}) as { itemId?: string };
+      if (!subjectFeatureEnabled('shop')) {
+        res.status(403).json({ error: '当前科目已禁用商店/道具功能' });
+        return;
+      }
     if (!itemId) {
       res.status(400).json({ error: '缺少道具 id' });
       return;
@@ -301,6 +313,10 @@ export function registerStudentRoutes(app: express.Express, auth: RequestHandler
     });
   app.post('/api/students/:id/pet/avatar', async (req, res) => {
     const upErr = await avatarUpload(req, res);
+      if (!subjectFeatureEnabled('avatar')) {
+        res.status(403).json({ error: '当前科目已禁用头像上传' });
+        return;
+      }
     if (upErr && (upErr as { multerError?: Error }).multerError) {
       res.status(400).json({ error: (upErr as { multerError: Error }).multerError.message });
       return;

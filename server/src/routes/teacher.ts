@@ -5,7 +5,7 @@ import { applyPoints, getLeaderboard, getPointHistory } from '../services/points
 import { addPetExp, getSpecies, getExpThresholds, DEFAULT_EXP_THRESHOLDS, stageIndex, stageLabelOf, stageLabelsOf, type PetRow } from '../services/pets.js';
 import { setSetting, getSetting } from '../db/settings.js';
 import { requireRole, type Session } from '../middleware.js';
-import { getActiveSubject } from '../services/subjects.js';
+import { getActiveSubject, subjectFeatureEnabled } from '../services/subjects.js';
 
 export function registerTeacherRoutes(app: express.Express, auth: RequestHandler): void {
   const teacherOnly = requireRole(['teacher', 'admin']);
@@ -70,6 +70,10 @@ export function registerTeacherRoutes(app: express.Express, auth: RequestHandler
       delta?: number;
       reason?: string;
     };
+      if (!subjectFeatureEnabled('points')) {
+        res.status(403).json({ error: '当前科目已禁用积分功能' });
+        return;
+      }
     const session = (req as Request & { session?: Session }).session;
     try {
       const result = applyPoints(

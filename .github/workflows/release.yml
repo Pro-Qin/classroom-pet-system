@@ -1,0 +1,44 @@
+name: Release（自动构建发布）
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: 构建并发布 Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci --no-audit --no-fund
+
+      - name: 构建（client + server）
+        run: npm run build
+
+      - name: 打包可部署产物
+        run: |
+          mkdir -p release-package
+          cp -r client/dist release-package/client
+          cp -r server/dist release-package/server
+          cp start.bat kiosk.bat package.json README.md release-package/
+          cd release-package
+          zip -qr "../classroom-pet-system-${{ github.ref_name }}.zip" .
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: classroom-pet-system-${{ github.ref_name }}.zip

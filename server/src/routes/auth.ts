@@ -80,12 +80,14 @@ export function registerAuthRoutes(app: express.Express): void {
 
     setSetting('first_run_done', '1');
     setSetting('admin_name', String(body.adminName ?? '').trim() || '管理员');
-  const teacherPw = String(body.teacherPassword ?? '').trim() || '123456';
-  if (teacherPw.length < 4) {
-    res.status(400).json({ error: '教师口令至少需要 4 位' });
-    return;
-  }
-  setSetting('teacher_password', teacherPw);
+    if (body.teacherPassword !== undefined) {
+      const teacherPw = String(body.teacherPassword).trim() || '123456';
+      if (teacherPw.length < 4) {
+        res.status(400).json({ error: '教师口令至少需要 4 位' });
+        return;
+      }
+      setSetting('teacher_password', teacherPw);
+    }
   if (body.subjects !== undefined && Array.isArray(body.subjects)) {
     setSetting('subjects_config', JSON.stringify(body.subjects));
   }

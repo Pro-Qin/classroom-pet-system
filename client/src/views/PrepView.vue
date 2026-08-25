@@ -96,13 +96,16 @@
         <p class="text-xs text-indigo-200/60 mt-1">
           将下载并运行安装器（不删除已安装的依赖与数据，增量更新）。
         </p>
-        <div class="mt-3 flex flex-wrap gap-2">
+        <div class="mt-3 flex flex-wrap gap-2 items-center">
           <button class="btn btn-primary px-4 py-2 text-sm" :disabled="updating" @click="installUpdate">
             <Loader2 v-if="updating" class="w-4 h-4 animate-spin" />
             <Download v-else class="w-4 h-4" />
-            {{ updating ? '正在下载并启动安装器…' : '立即更新' }}
+            {{ updating ? '正在下载安装器… ' + downloadPct + '%' : '立即更新' }}
           </button>
           <span v-if="updateError" class="text-xs text-amber-300 self-center">{{ updateError }}</span>
+          <div v-if="updating" class="w-full max-w-xs h-2 rounded-full bg-white/10 overflow-hidden">
+            <div class="h-full bg-indigo-400 transition-all duration-300" :style="{ width: downloadPct + '%' }" />
+          </div>
         </div>
       </div>
 
@@ -156,6 +159,7 @@ const updateInfo = ref('');
 const hasUpdate = ref(false);
 const updating = ref(false);
 const updateError = ref('');
+const downloadPct = ref(0);
 const mode = ref('');
 
 /** 显示当前同步模式（离线/云端），接口为公开的准备阶段接口 */
@@ -186,11 +190,23 @@ function setState(key: string, state: CheckItem['state'], detail = ''): void {
 async function installUpdate(): Promise<void> {
   updating.value = true;
   updateError.value = '';
+  downloadPct.value = 0;
   try {
-    const r = await api<{ ok: boolean; version: string }>('/updates/install', { method: 'POST' });
-    if (r.ok) {
-      updateInfo.value = `新版本 ${r.version} 已在下载，安装向导即将启动…`;
-      setState('update', 'done', `新版本 ${r.version} 安装器已启动`);
+    const r = await api<{ ok: boolean; jobId: string; version: string }>('/updates/install', { method: 'POST' });
+    if (!r.ok) throw new Error('无法启动下载任务');
+    // 轮询下载进度
+    for (;;) {
+      const st = await api<{ pct: number; status: 'downloading' | 'done' | 'error'; error?: string | null }>('/updates/install/status?jobId=' + encodeURIComponent(r.jobId));
+      downloadPct.value = st.pct;
+      if (st.status === 'done') {
+        updateInfo.value = `新版本 ${r.version} 已下载，安装向导即将启动…`;
+        setState('update', 'done', `新版本 ${r.version} 安装器已启动`);
+        break;
+      }
+      if (st.status === 'error') {
+        throw new Error(st.error || '下载失败');
+      }
+      await new Promise((res) => setTimeout(res, 600));
     }
   } catch (e) {
     updateError.value = (e as Error).message;

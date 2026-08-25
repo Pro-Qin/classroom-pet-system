@@ -210,7 +210,7 @@
               <button class="btn btn-ghost !py-1 !px-2 text-xs" @click="delta = 5">恢复默认 5</button>
             </div>
             <input v-model="reason" class="input !py-1.5 !text-sm mt-3" placeholder="加减分理由（必填）" @keyup.enter="applyPoints" />
-            <p v-if="reason.trim() === ''" class="mt-1 text-xs text-indigo-200/50">
+            <p class="mt-1 text-xs text-indigo-200/50">
               好麻烦？
               <button class="underline text-fuchsia-300 hover:text-fuchsia-200" @click="presetAddOpen = true">试试添加快捷理由！</button>
             </p>
@@ -540,7 +540,7 @@ const presetError = ref('');
 const newPreset = reactive({ label: '', delta: 5 });
 
 // 经验表单
-const expAmount = ref(30);
+const expAmount = ref('');
 const expReason = ref('');
 const expTarget = ref('');
 const expFlashId = ref('');

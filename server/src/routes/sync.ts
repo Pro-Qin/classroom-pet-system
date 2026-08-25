@@ -144,8 +144,12 @@ export function parseGiteeRepo(raw: string): { owner: string; repo: string } | n
   return { owner: m[1], repo: m[2] };
 }
 
-/** 下载安装器到临时目录，返回本地路径。优先尝试多个镜像地址。 */
-async function downloadInstaller(baseUrl: string, assetName: string, version: string): Promise<string> {
+/** 下载任务进度登记表（jobId -> 进度 0..100 + 状态）。 */
+const downloadJobs = new Map<string, { pct: number; status: 'downloading' | 'done' | 'error'; error?: string; path?: string }>();
+let jobSeq = 0;
+
+/** 下载安装器到临时目录，返回本地路径。流式写盘并回调进度。优先尝试多个镜像。 */
+async function downloadInstaller(baseUrl: string, assetName: string, version: string, onPct?: (pct: number) => void): Promise<string> {
   const tmpDir = path.join(os.tmpdir(), 'pet-campus-update');
   fs.mkdirSync(tmpDir, { recursive: true });
   const safeName = assetName || `ClassroomPetSystem-Setup-${version.replace(/^v/i, '')}.exe`;
@@ -154,10 +158,23 @@ async function downloadInstaller(baseUrl: string, assetName: string, version: st
   let lastErr: Error | null = null;
   for (const url of urls) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(120_000), redirect: 'follow' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const buf = Buffer.from(await res.arrayBuffer());
+      const res = await fetch(url, { signal: AbortSignal.timeout(150_000), redirect: 'follow' });
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      const total = Number(res.headers.get('content-length')) || 0;
+      const reader = res.body.getReader();
+      const chunks: Buffer[] = [];
+      let received = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const b = Buffer.from(value);
+        chunks.push(b);
+        received += b.length;
+        if (total > 0 && onPct) onPct(Math.min(99, Math.round((received / total) * 100)));
+      }
+      const buf = Buffer.concat(chunks);
       fs.writeFileSync(dest, buf);
+      if (onPct) onPct(100);
       return dest;
     } catch (e) {
       lastErr = e as Error;
@@ -169,14 +186,19 @@ async function downloadInstaller(baseUrl: string, assetName: string, version: st
 /** 对 github-mirror 资产，尝试原始 github 地址，随后加各镜像前缀。 */
 function candidateUrls(baseUrl: string): string[] {
   const out: string[] = [];
+  const MIRRORS = [
+    'https://ghfast.top',
+    'https://gh-proxy.com',
+    'https://ghproxy.net',
+    'https://github.moeyy.xyz',
+    'https://ghproxy.cc',
+    'https://gh.llkk.cc',
+  ];
   if (/^https:\/\/github\.com\//.test(baseUrl)) {
     // 先镜像（国内快），最后直连 github
-    const MIRRORS = ['https://ghfast.top', 'https://gh-proxy.com', 'https://ghproxy.net', 'https://github.moeyy.xyz'];
     for (const m of MIRRORS) out.push(`${m}/${baseUrl}`);
     out.push(baseUrl);
   } else if (/^https:\/\/gitee\.com\//.test(baseUrl)) {
-    out.push(baseUrl);
-    // gitee 也尝试镜像（可选）
     out.push(baseUrl);
   } else {
     out.push(baseUrl);
@@ -210,8 +232,9 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
   function throttle(ip: string, global = false): boolean {
     const last = syncThrottle.get(ip) ?? 0;
     const now = Date.now();
-    if (now - last < 3000) return true;
-    if (global && now - lastGlobalRun < 5000) return true;
+    // 放宽节流窗口：正常准备界面同步 + 后台自动推送不应互相撞出 429
+    if (now - last < 6000) return true;
+    if (global && now - lastGlobalRun < 8000) return true;
     syncThrottle.set(ip, now);
     if (global) lastGlobalRun = now;
     return false;
@@ -413,13 +436,12 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
   });
 
   // 下载并启动安装器（增量更新）：从多源中找到可达的安装器地址，
-  // 下载到临时目录并启动 Inno 安装向导。不删除 node_modules / server/data。
+  // 后台下载并报告进度，完成后启动 Inno 安装向导。不删除 node_modules / server/data。
   app.post('/api/updates/install', async (req, res) => {
     const body = (req.body ?? {}) as { sourceId?: string };
     const { sources, highest } = await checkAllSources();
     let assetUrl = '';
     let assetName = '';
-    // 若客户端指定源，则优先；否则取第一个可达且有安装器的源。
     if (body.sourceId) {
       const chosen = sources.find((s) => s.id === body.sourceId);
       if (chosen && chosen.reachable && chosen.assetUrl) {
@@ -435,13 +457,31 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
       res.status(400).json({ error: '当前已是最新版本或无可用安装器' });
       return;
     }
-    try {
-      const installerPath = await downloadInstaller(assetUrl, assetName, highest);
-      launchInstaller(installerPath);
-      res.json({ ok: true, path: installerPath, version: highest });
-    } catch (e) {
-      res.status(500).json({ error: '下载或启动安装器失败：' + (e as Error).message });
-    }
+    // 启动后台下载任务，立即返回 jobId，前端轮询进度。
+    const jobId = 'dl-' + Date.now() + '-' + (++jobSeq);
+    const job: { pct: number; status: 'downloading' | 'done' | 'error'; error?: string; path?: string } = { pct: 0, status: 'downloading' };
+    downloadJobs.set(jobId, job);
+    (async () => {
+      try {
+        const installerPath = await downloadInstaller(assetUrl, assetName, highest, (pct) => { job.pct = pct; });
+        job.pct = 100;
+        job.status = 'done';
+        job.path = installerPath;
+        launchInstaller(installerPath);
+      } catch (e) {
+        job.status = 'error';
+        job.error = (e as Error).message;
+      }
+    })();
+    res.json({ ok: true, jobId, version: highest });
+  });
+
+  // 下载进度轮询：前端定时查询安装器下载进度。
+  app.get('/api/updates/install/status', (req, res) => {
+    const jobId = String((req.query.jobId ?? ''));
+    const job = downloadJobs.get(jobId);
+    if (!job) { res.status(404).json({ error: '任务不存在' }); return; }
+    res.json({ pct: job.pct, status: job.status, error: job.error ?? null });
   });
 
   // 向导/管理端保存同步配置（管理员专属 + 域名白名单）

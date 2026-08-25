@@ -147,9 +147,12 @@ func run() int {
 
 	// 5. Open browser — only reached when the server is confirmed ready.
 	openBrowser(fmt.Sprintf("http://localhost:%d", port))
+	// 浏览器打开后，把启动器终端最小化到任务栏（服务靠心跳维持；浏览器关闭时端自动停止）。
+	minimizeConsole()
 
 	fmt.Println()
 	fmt.Println("  ✓ 已在默认浏览器打开。关闭本窗口 / 按 Ctrl+C 将停止服务。")
+	fmt.Println("    （服务随浏览器保活：关闭浏览器后，后端会自动停止。）")
 	waitForExit(port)
 	return 0
 }

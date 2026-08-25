@@ -168,89 +168,96 @@
       <div v-if="tab === 'pets'"><PetsLevelManager /></div>
 
       <!-- ============ 设置 ============ -->
-      <div v-if="tab === 'settings'" class="glass p-5 max-w-2xl animate-fadeUp space-y-5">
+      <div v-if="tab === 'settings'" class="glass p-6 max-w-4xl animate-fadeUp space-y-6">
         <h3 class="font-bold text-indigo-50 flex items-center gap-2"><Settings2 class="w-5 h-5 text-slate-300" /> 系统设置</h3>
-        <div>
-          <label class="label">积分单位名称</label>
-          <input v-model="setForm.pointsUnit" class="input !w-56" placeholder="如：学分 / 星星 / 积分" />
-        </div>
-        <div>
-          <label class="label">管理员名称</label>
-          <input v-model="setForm.adminName" class="input !w-56" />
-        </div>
-        <div>
-          <label class="label">Gitee 更新源（锁定，不可修改）</label>
-          <div class="flex gap-2 items-center">
-            <input :value="'https://gitee.com/am-zzq/classroom-pet-system'" readonly class="input !flex-1 opacity-70" />
-            <span class="pill bg-emerald-500/15 text-emerald-300 shrink-0"><Lock class="w-3 h-3" /> 已锁定</span>
-          </div>
-        </div>
-        <div>
-          <label class="label">本地备份存储上限（MB，默认 1024）</label>
-          <input v-model.number="setForm.backupMaxMB" type="number" class="input !w-44" min="1" placeholder="1024" />
-        </div>
 
+        <!-- 基础设置：两列，提高信息密度 -->
+        <div class="grid md:grid-cols-2 gap-x-6 gap-y-4">
+          <div>
+            <label class="label">积分单位名称</label>
+            <input v-model="setForm.pointsUnit" class="input !w-full" placeholder="如：学分 / 星星 / 积分" />
+          </div>
+          <div>
+            <label class="label">管理员名称</label>
+            <input v-model="setForm.adminName" class="input !w-full" />
+          </div>
+          <div>
+            <label class="label">Gitee 更新源（锁定，不可修改）</label>
+            <div class="flex gap-2 items-center">
+              <input :value="'https://gitee.com/am-zzq/classroom-pet-system'" readonly class="input !flex-1 opacity-70" />
+              <span class="pill bg-emerald-500/15 text-emerald-300 shrink-0"><Lock class="w-3 h-3" /> 已锁定</span>
+            </div>
+          </div>
+          <div>
+            <label class="label">本地备份存储上限（MB，默认 1024）</label>
+            <input v-model.number="setForm.backupMaxMB" type="number" class="input !w-full" min="1" placeholder="1024" />
+          </div>
           <div>
             <label class="label">教师口令（管理员可查看/修改）</label>
             <div class="flex gap-2">
               <input v-model="setForm.teacherPassword" class="input !w-44" placeholder="123456" />
-              <button class="btn btn-ghost !py-2 text-sm" @click="saveTeacherPassword"><KeyRound class="w-4 h-4" /> 保存教师口令</button>
+              <button class="btn btn-ghost !py-2 text-sm" @click="saveTeacherPassword"><KeyRound class="w-4 h-4" /> 保存</button>
             </div>
-            <p class="text-xs text-indigo-200/50 mt-1">当前教师口令：<code class="px-1.5 py-0.5 rounded bg-white/10 text-amber-300">{{ setForm.teacherPassword || '123456' }}</code></p>
           </div>
           <div>
             <label class="label">当前科目</label>
-            <select v-model="setForm.activeSubject" class="input !w-56">
+            <select v-model="setForm.activeSubject" class="input !w-full">
               <option v-for="s in setForm.subjects" :key="s.name" :value="s.name">{{ s.name }}</option>
             </select>
           </div>
           <div>
-            <label class="label">科目列表与个性化</label>
-            <div v-for="(s, i) in setForm.subjects" :key="i" class="rounded-xl bg-white/5 border border-white/10 p-3 mb-2 text-sm">
-              <div class="flex items-center gap-2 mb-1">
-                <input v-model="s.name" class="input !py-1 !text-sm !w-32" />
-                <label class="flex items-center gap-1 text-xs"><input v-model="s.sync" type="checkbox" class="accent-indigo-400" /> 同步</label>
-                <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.points" type="checkbox" class="accent-indigo-400" /> 积分</label>
-                <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.pets" type="checkbox" class="accent-indigo-400" /> 宠物</label>
-                <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.shop" type="checkbox" class="accent-indigo-400" /> 商店</label>
-                <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.rank" type="checkbox" class="accent-indigo-400" /> 排行</label>
-                <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.avatar" type="checkbox" class="accent-indigo-400" /> 头像</label>
-                <button class="ml-auto text-rose-300" @click="removeSubject(i)"><Trash2 class="w-3.5 h-3.5" /></button>
-              </div>
-            </div>
-            <button class="btn btn-ghost !py-2 text-sm" @click="addSubject"><Plus class="w-4 h-4" /> 添加科目</button>
-          </div>
-          <div>
             <label class="label">云端备份保留份数（默认 10）</label>
-            <input v-model.number="setForm.cloudBackupRetention" type="number" class="input !w-44" min="1" max="365" placeholder="10" />
+            <input v-model.number="setForm.cloudBackupRetention" type="number" class="input !w-full" min="1" max="365" placeholder="10" />
           </div>
           <div class="rounded-xl bg-white/5 border border-white/10 p-3 space-y-3">
             <label class="label !mb-0 flex items-center gap-2"><Palette class="w-4 h-4 text-fuchsia-300" /> 界面文案风格（默认正式）</label>
-            <div>
-              <span class="text-xs text-indigo-200/60 block mb-1">欢迎 / 准备界面</span>
-              <select v-model="setForm.uiStyle.welcome" class="input !w-64">
-                <option value="global_formal">全局正式（默认）</option>
-                <option value="student_playful">仅学生端俏皮（欢迎/准备保持正式）</option>
-                <option value="global_playful">全局俏皮</option>
-              </select>
+            <div class="grid grid-cols-1 gap-2">
+              <div>
+                <span class="text-xs text-indigo-200/60 block mb-1">欢迎 / 准备界面</span>
+                <select v-model="setForm.uiStyle.welcome" class="input !w-full">
+                  <option value="global_formal">全局正式（默认）</option>
+                  <option value="student_playful">仅学生端俏皮</option>
+                  <option value="global_playful">全局俏皮</option>
+                </select>
+              </div>
+              <div>
+                <span class="text-xs text-indigo-200/60 block mb-1">学生界面</span>
+                <select v-model="setForm.uiStyle.student" class="input !w-full">
+                  <option value="formal">正式（默认）</option>
+                  <option value="playful">俏皮（颜文字萌系）</option>
+                </select>
+              </div>
+              <div>
+                <span class="text-xs text-indigo-200/60 block mb-1">管理界面</span>
+                <select v-model="setForm.uiStyle.admin" class="input !w-full">
+                  <option value="global_formal">全局正式（默认）</option>
+                  <option value="student_playful">仅学生端俏皮</option>
+                  <option value="global_playful">全局俏皮</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <span class="text-xs text-indigo-200/60 block mb-1">学生界面</span>
-              <select v-model="setForm.uiStyle.student" class="input !w-64">
-                <option value="formal">正式（默认）</option>
-                <option value="playful">俏皮（颜文字萌系）</option>
-              </select>
-            </div>
-            <div>
-              <span class="text-xs text-indigo-200/60 block mb-1">管理界面</span>
-              <select v-model="setForm.uiStyle.admin" class="input !w-64">
-                <option value="global_formal">全局正式（默认）</option>
-                <option value="student_playful">仅学生端俏皮（管理保持正式）</option>
-                <option value="global_playful">全局俏皮</option>
-              </select>
-            </div>
-            <p class="text-xs text-indigo-200/50">俏皮风格会用颜文字萌系口吻，仅影响部分提示文案；切换后点“保存设置”生效。</p>
+            <p class="text-xs text-indigo-200/50">俏皮风格用颜文字萌系口吻，仅影响部分文案；保存后生效。</p>
           </div>
+        </div>
+
+        <!-- 科目列表与个性化 -->
+        <div>
+          <h4 class="font-semibold text-indigo-50 mb-2">科目列表与个性化</h4>
+          <div v-for="(s, i) in setForm.subjects" :key="i" class="rounded-xl bg-white/5 border border-white/10 p-3 mb-2 text-sm">
+            <div class="flex flex-wrap items-center gap-2">
+              <input v-model="s.name" class="input !py-1 !text-sm !w-32" />
+              <label class="flex items-center gap-1 text-xs"><input v-model="s.sync" type="checkbox" class="accent-indigo-400" /> 同步</label>
+              <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.points" type="checkbox" class="accent-indigo-400" /> 积分</label>
+              <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.pets" type="checkbox" class="accent-indigo-400" /> 宠物</label>
+              <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.shop" type="checkbox" class="accent-indigo-400" /> 商店</label>
+              <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.rank" type="checkbox" class="accent-indigo-400" /> 排行</label>
+              <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.avatar" type="checkbox" class="accent-indigo-400" /> 头像</label>
+              <button class="ml-auto text-rose-300" @click="removeSubject(i)"><Trash2 class="w-3.5 h-3.5" /></button>
+            </div>
+          </div>
+          <button class="btn btn-ghost !py-2 text-sm" @click="addSubject"><Plus class="w-4 h-4" /> 添加科目</button>
+        </div>
+
         <button class="btn btn-primary" @click="saveSettings">保存设置</button>
 
         <hr class="border-white/10" />

@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen overflow-hidden relative">
+  <div class="min-h-screen overflow-y-auto relative">
     <!-- 顶部 -->
     <header class="pt-8 pb-4 text-center relative z-10">
       <h1 class="text-4xl font-bold text-indigo-50 tracking-wide">校园宠物乐园 · 班级荣誉榜</h1>
@@ -8,7 +8,7 @@
 
     <!-- 轮播内容 -->
     <Transition name="fade" mode="out-in">
-      <main :key="view" class="max-w-6xl mx-auto px-8 pb-10">
+      <main :key="view" class="max-w-6xl mx-auto px-8 pb-36">
         <!-- 排行榜 -->
         <div v-if="view === 'rank'">
           <div class="grid grid-cols-3 gap-6 items-end mb-8">
@@ -71,9 +71,9 @@
 
     <!-- 底部退出（一体机大按钮） -->
     <div class="bottom-bar">
-      <a href="/login" class="btn btn-ghost !text-base">
+      <button class="btn btn-ghost !text-base" @click="exitKiosk">
         <LogOut class="w-5 h-5" /> 退出大屏
-      </a>
+      </button>
     </div>
   </div>
 </template>
@@ -159,6 +159,19 @@ async function load(): Promise<void> {
 
 function tick(): void {
   nowText.value = new Date().toLocaleString('zh-CN', { hour12: false });
+}
+
+// 退出大屏：大屏通常以独立 Edge 应用窗口打开（kiosk.bat 用 --app）。
+// 关闭该窗口即可回到原来的浏览器标签页；若 window.close 被拦截（如以普通标签页打开），
+// 则回退到登录页。
+function exitKiosk(): void {
+  window.close();
+  // 若窗口未能关闭（普通标签页场景），延迟后导航回登录页作为兜底。
+  setTimeout(() => {
+    if (!window.closed) {
+      window.location.href = '/login';
+    }
+  }, 120);
 }
 
 onMounted(() => {

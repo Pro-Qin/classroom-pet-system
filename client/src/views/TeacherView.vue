@@ -254,7 +254,7 @@
                 <Plus class="w-3.5 h-3.5" /> 添加
               </button>
             </div>
-            <div v-if="presetAddOpen" class="mt-3 rounded-xl bg-white/5 border border-white/10 p-3 animate-fadeUp">
+            <div v-if="presetAddOpen" ref="presetBox" class="mt-3 rounded-xl bg-white/5 border border-white/10 p-3 animate-fadeUp">
               <p class="text-xs text-indigo-200/70 mb-2">新增快捷预设（无数量上限）</p>
               <div class="flex gap-2">
                 <input v-model="newPreset.label" class="input !py-1.5 !text-sm flex-1" placeholder="名称，如：黑板报加分" @keyup.enter="addPreset" />
@@ -441,7 +441,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   GraduationCap, MonitorPlay, LogOut, Users, Coins, TrendingUp, PawPrint,
@@ -528,6 +528,14 @@ const reason = ref('');
 
 // 快捷预设（+ 快捷添加）
 const presetAddOpen = ref(false);
+const presetBox = ref<HTMLElement | null>(null);
+// 新增快捷预设弹窗打开时，自动把弹窗滚进可视区域（否则屏幕较小时弹到画面外）。
+watch(presetAddOpen, async (open) => {
+  if (open) {
+    await nextTick();
+    presetBox.value?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+});
 const presetError = ref('');
 const newPreset = reactive({ label: '', delta: 5 });
 

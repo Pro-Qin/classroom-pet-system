@@ -82,7 +82,7 @@
                       :key="b.id"
                       class="absolute text-2xl burst-emoji"
                       :style="{ left: b.x + '%', top: b.y + '%' }"
-                    >${b.emoji}</span>
+                    >{{ b.emoji }}</span>
                   </TransitionGroup>
                 </div>
                 <img

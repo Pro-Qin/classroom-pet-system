@@ -50,6 +50,7 @@ const bootState = ref<'loading' | 'ready'>('loading');
 // 连接状态常驻提醒
 const syncPill = reactive({ visible: false, mode: '', text: '', cls: '', title: '' });
 let syncTimer: ReturnType<typeof setInterval> | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
 async function refreshSyncPill(): Promise<void> {
   try {
@@ -128,8 +129,16 @@ onMounted(() => {
   refreshSync();
   refreshSyncPill();
   syncTimer = setInterval(refreshSyncPill, 60_000);
+  // 心跳：配合 start.exe 的"浏览器关闭→后端自动结束"。
+  // 页面打开期间周期上报，浏览器关闭/标签关闭后服务端在超时后自动停止。
+  heartbeatTimer = setInterval(() => {
+    void api('/heartbeat', { method: 'POST' }).catch(() => {
+      /* 服务端不可达时忽略（设备单机场景） */
+    });
+  }, 5000);
 });
 onUnmounted(() => {
   if (syncTimer) clearInterval(syncTimer);
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
 });
 </script>

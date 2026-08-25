@@ -16,6 +16,13 @@ import { requireAuth } from './middleware.js';
 import { logger } from './utils/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// —— 浏览器心跳/自动停止状态（仅在 start.exe 拉起、且收到心跳后启用）——
+let lastHeartbeatAt = 0;
+let heartbeatStarted = false;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+const HEARTBEAT_TIMEOUT_MS = 30_000; // 无心跳超过 30s 判定浏览器已关闭
+
 export function createApp(): express.Express {
   const app = express();
   app.use(express.json({ limit: '20mb' }));
@@ -75,6 +82,28 @@ export function createApp(): express.Express {
       appVersion: APP_VERSION,
     });
   });
+
+  // 浏览器心跳：前端 App 周期性调用；配合 start.exe 的"浏览器关闭→后端自动结束"。
+  // 仅当由启动器拉起（PET_PORT 存在）且已收到过一次心跳后才启用自动停止。
+  if (process.env.PET_PORT) {
+    app.post('/api/heartbeat', (_req, res) => {
+      lastHeartbeatAt = Date.now();
+      if (!heartbeatStarted) {
+        heartbeatStarted = true;
+        // 首次心跳后启动"失联检测"：超过阈值（默认 30s）无心跳则结束服务。
+        if (!heartbeatTimer) {
+          heartbeatTimer = setInterval(() => {
+            if (heartbeatStarted && Date.now() - lastHeartbeatAt > HEARTBEAT_TIMEOUT_MS) {
+              console.log('[heartbeat] 长时间未收到浏览器心跳，服务自动停止。');
+              process.exit(0);
+            }
+          }, 5000);
+          heartbeatTimer.unref?.();
+        }
+      }
+      res.json({ ok: true });
+    });
+  }
 
   // 上传文件
   app.use('/uploads', express.static(UPLOAD_DIR));

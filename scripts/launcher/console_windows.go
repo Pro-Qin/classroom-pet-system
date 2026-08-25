@@ -14,3 +14,15 @@ func initConsole() {
 	// SetConsoleCP(65001) — affects input
 	kernel32.NewProc("SetConsoleCP").Call(65001)
 }
+
+// minimizeConsole minimizes the current console window so it drops to the
+// taskbar once the browser opens (user only needs the web UI afterwards).
+func minimizeConsole() {
+	user32 := syscall.NewLazyDLL("user32.dll")
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	hwnd, _, _ := kernel32.NewProc("GetConsoleWindow").Call()
+	if hwnd != 0 {
+		// 6 = SW_MINIMIZE
+		user32.NewProc("ShowWindow").Call(hwnd, 6)
+	}
+}

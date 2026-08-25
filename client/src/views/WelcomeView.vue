@@ -59,10 +59,12 @@
             <input v-model="form.supabaseServiceKey" type="password" class="input" placeholder="eyJhbGciOi...（仅保存在本机配置中）" />
           </div>
         </div>
-        <div class="mt-8 flex justify-between">
+        <div class="mt-8 flex items-center justify-between gap-2">
           <button class="btn btn-ghost" @click="prev"><ChevronLeft class="w-4 h-4" />上一步</button>
+          <button class="btn btn-ghost text-xs flex-1 max-w-xs" @click="openImport"><Download class="w-4 h-4" /> 导入配置</button>
           <button class="btn btn-primary" @click="next">下一步 <ChevronRight class="w-4 h-4" /></button>
         </div>
+        <input ref="importFile" type="file" accept=".json,application/json" class="hidden" @change="onImportFile" />
       </div>
 
       <!-- Step 2: 管理员密码 -->
@@ -116,8 +118,9 @@
             </div>
           <p v-if="pwError" class="text-sm text-rose-300">{{ pwError }}</p>
         </div>
-        <div class="mt-8 flex justify-between">
+        <div class="mt-8 flex items-center justify-between gap-2">
           <button class="btn btn-ghost" @click="prev"><ChevronLeft class="w-4 h-4" />上一步</button>
+          <button class="btn btn-ghost text-xs flex-1 max-w-xs" @click="openImport"><Download class="w-4 h-4" /> 导入配置</button>
           <button class="btn btn-primary" @click="submit" :disabled="saving">
             <Loader2 v-if="saving" class="w-4 h-4 animate-spin" />
             {{ saving ? '正在保存…' : '完成配置' }}
@@ -149,8 +152,9 @@
 <script setup lang="ts">
 import { reactive, ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { PawPrint, ArrowRight, ChevronLeft, ChevronRight, Cloud, ShieldCheck, CheckCircle2, Loader2 } from 'lucide-vue-next';
+import { PawPrint, ArrowRight, ChevronLeft, ChevronRight, Cloud, ShieldCheck, CheckCircle2, Loader2, Download } from 'lucide-vue-next';
 import { api } from '../api';
+import { toast } from '../composables/toast';
 import { pick, vibe } from '../composables/useCopyStyle';
 
 const router = useRouter();
@@ -172,6 +176,33 @@ const form = reactive({
     subjectSync: true,
     subjectFeatures: { points: true, pets: true, shop: true, rank: true, avatar: true },
 });
+
+// 导入配置文件（JSON）：从管理端“配置导出”得到，可快速填充云端/管理员/科目等字段。
+const importFile = ref<HTMLInputElement | null>(null);
+function openImport(): void {
+  importFile.value?.click();
+}
+function onImportFile(e: Event): void {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const cfg = JSON.parse(String(reader.result ?? ''));
+      if (cfg.supabaseUrl !== undefined) form.supabaseUrl = String(cfg.supabaseUrl);
+      if (cfg.supabaseAnonKey !== undefined) form.supabaseAnonKey = String(cfg.supabaseAnonKey);
+      if (cfg.supabaseServiceKey !== undefined) form.supabaseServiceKey = String(cfg.supabaseServiceKey);
+      if (cfg.adminName !== undefined) form.adminName = String(cfg.adminName);
+      if (cfg.teacherPassword !== undefined) form.teacherPassword = String(cfg.teacherPassword);
+      if (cfg.activeSubject !== undefined) form.subjectName = String(cfg.activeSubject);
+      toast('配置已导入，请确认后继续', 'success');
+    } catch {
+      toast('导入失败：不是有效的 JSON 配置文件', 'error');
+    }
+  };
+  reader.readAsText(file);
+  (e.target as HTMLInputElement).value = '';
+}
 
 const steps = [
   { key: 'welcome' },

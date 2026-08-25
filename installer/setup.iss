@@ -34,7 +34,7 @@ Compression=lzma2
 SolidCompression=yes
 SetupIconFile=app.ico
 UninstallDisplayIcon={app}\{#AppExe}
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesInstallIn64BitMode=x64compatible
 
 [Languages]
 Name: "default"; MessagesFile: "compiler:Default.isl"
@@ -70,7 +70,7 @@ Name: "{app}\server\data"; Permissions: users-modify
 ; ------------------------------------------------------------
 [Code]
 var
-  EntryPage: TInputOptionPage;
+  EntryPage: TInputOptionWizardPage;
   EntryChoice_Exe: Integer;
 
 { Return which entry type was selected (0 = start.exe, 1 = start.bat) }
@@ -107,7 +107,6 @@ begin
   EntryChoice_Exe := 0;
 end;
 
-; ------------------------------------------------------------
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务:"; Flags: unchecked
 

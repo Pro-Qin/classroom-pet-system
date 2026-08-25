@@ -15,10 +15,11 @@ import (
 )
 
 const (
-	appName     = "校园宠物乐园"
-	chinaMirror = "https://registry.npmmirror.com"
-	serverPort  = 3000
-	healthPath  = "/api/health"
+	appName      = "校园宠物乐园"
+	chinaMirror  = "https://registry.npmmirror.com"
+	startPort    = 3000 // 起始端口；若被占用/系统保留会自动递增
+	maxPortTries = 200  // 最多尝试 200 个端口
+	healthPath   = "/api/health"
 )
 
 func main() {
@@ -76,31 +77,34 @@ func main() {
 		fmt.Println()
 	}
 
-	// 4. Start server.
-	if serverAlreadyRunning() {
-		fmt.Printf("\n  ✓ 服务已在运行：http://localhost:%d\n", serverPort)
+	// 4. Pick a free port (skip in-use AND OS-reserved ranges, e.g. Windows
+	//    may reserve 3000-3240 causing EACCES). Pass it to node via PET_PORT.
+	port := findFreePort(startPort, maxPortTries)
+
+	if serverAlreadyRunning(port) {
+		fmt.Printf("\n  ✓ 服务已在运行：http://localhost:%d\n", port)
 	} else {
 		fmt.Println()
-		fmt.Println("  ▶ 正在启动服务...")
-		if err := startServer(appDir); err != nil {
+		fmt.Printf("  ▶ 正在启动服务（端口 %d）...\n", port)
+		if err := startServer(appDir, port); err != nil {
 			stepErr("服务启动失败", "")
 			fmt.Println()
 			pause()
 			os.Exit(1)
 		}
-		waitServerReady(15 * time.Second)
-		fmt.Printf("  ✓ 服务地址：http://localhost:%d\n", serverPort)
-		fmt.Println("    本机其他设备（同一局域网）访问：http://本机IP:3000")
+		waitServerReady(port, 15*time.Second)
+		fmt.Printf("  ✓ 服务地址：http://localhost:%d\n", port)
+		fmt.Println("    本机其他设备（同一局域网）访问：http://本机IP:" + fmt.Sprint(port))
 		fmt.Println("    按 Ctrl+C 或关闭本窗口即可停止服务。")
 		fmt.Println()
 	}
 
 	// 5. Open browser.
-	openBrowser(fmt.Sprintf("http://localhost:%d", serverPort))
+	openBrowser(fmt.Sprintf("http://localhost:%d", port))
 
 	fmt.Println()
 	fmt.Println("  ✓ 已在默认浏览器打开。关闭本窗口 / 按 Ctrl+C 将停止服务。")
-	waitForExit()
+	waitForExit(port)
 }
 
 // printBanner renders an ASCII banner with a clean, professional look.
@@ -238,8 +242,9 @@ func drawProgress(pct int) {
 }
 
 // startServer launches `node server/dist/index.js` in the app dir and returns.
+// The chosen port is passed to node via PET_PORT (falling back to PORT).
 // The child is started independent of the parent so it keeps running.
-func startServer(dir string) error {
+func startServer(dir string, port int) error {
 	script := filepath.Join("server", "dist", "index.js")
 	nodeExe := "node"
 	if runtime.GOOS == "windows" {
@@ -247,6 +252,7 @@ func startServer(dir string) error {
 	}
 	cmd := exec.Command(nodeExe, script)
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "PET_PORT="+fmt.Sprint(port), "PORT="+fmt.Sprint(port))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
@@ -257,8 +263,22 @@ func startServer(dir string) error {
 	return nil
 }
 
-func serverAlreadyRunning() bool {
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", serverPort), 300*time.Millisecond)
+// findFreePort returns the first port (from `from` upward) that we can bind.
+// A successful bind proves the port is neither in use nor Windows-reserved
+// (reserved ports return permission denied / EACCES on bind).
+func findFreePort(from, tries int) int {
+	for p := from; p < from+tries; p++ {
+		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+		if err == nil {
+			_ = ln.Close()
+			return p
+		}
+	}
+	return from // fallback: let node try (will surface a clear error)
+}
+
+func serverAlreadyRunning(port int) bool {
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 300*time.Millisecond)
 	if err != nil {
 		return false
 	}
@@ -266,9 +286,9 @@ func serverAlreadyRunning() bool {
 	return true
 }
 
-func waitServerReady(timeout time.Duration) {
+func waitServerReady(port int, timeout time.Duration) {
 	client := &http.Client{Timeout: 2 * time.Second}
-	url := fmt.Sprintf("http://localhost:%d%s", serverPort, healthPath)
+	url := fmt.Sprintf("http://localhost:%d%s", port, healthPath)
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(url)
@@ -296,9 +316,9 @@ func openBrowser(url string) {
 }
 
 // waitForExit blocks until the server is stopped by the user.
-func waitForExit() {
+func waitForExit(port int) {
 	client := &http.Client{Timeout: 2 * time.Second}
-	url := fmt.Sprintf("http://localhost:%d%s", serverPort, healthPath)
+	url := fmt.Sprintf("http://localhost:%d%s", port, healthPath)
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {

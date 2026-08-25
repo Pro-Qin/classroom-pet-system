@@ -100,7 +100,8 @@ export function createApp(): express.Express {
 }
 
 if (process.env.NODE_ENV !== 'test') {
-  const PORT = Number(process.env.PORT) || 3000;
+  // PET_PORT 优先：start.exe 已选好可用端口；其次 PORT；最后默认 3000
+  const PORT = Number(process.env.PET_PORT) || Number(process.env.PORT) || 3000;
   const app = createApp();
   app.listen(PORT, () => {
     console.log(`[pet-campus] server ready  http://localhost:${PORT}`);

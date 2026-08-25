@@ -24,6 +24,8 @@ AppPublisher={#AppPublisher}
 ; Install to a per-user writable folder so the server can write server/data
 ; (pet.db, uploads, config.json, backups) without admin / UAC.
 DefaultDirName={localappdata}\{#AppNameEn}
+; 开始菜单文件夹名：默认用软件名，避免显示 "(default)"
+DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 ; Show the welcome/intro page and the "choose install location" page.
 DisableWelcomePage=no

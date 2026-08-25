@@ -130,6 +130,9 @@ v0.2.0 — 接入真实 Gitee 更新源（准备界面自动检查 releases/late
 - **start.bat / kiosk.bat 乱码修复**：改为纯英文（ASCII）提示，cmd 不再出现“不是内部或外部命令”的 GBK/UTF-8 乱码
 - **增量更新**：升级安装器不删除 `node_modules` 与 `server/data`（数据、密钥、依赖均保留）
 - **多源更新检查**：准备界面按 `GitHub 镜像 → Gitee → GitHub` 顺序探测新版本；发现新版本后可在界面“立即更新”，应用自行下载安装器并启动安装向导
+- **端口自动避让**：Windows 可能把端口段（如 3000-3240）留为“系统保留端口”，直接 bind 会报 `EACCES`。`start.exe` 会从 3000 起递增探测可用端口（跳过被占用/保留段），并把实际端口传给服务端（`PET_PORT`），随后自动打开正确地址，无需改端口
+- **start.exe 依赖进度条**：首次安装依赖时显示平滑进度条（替代满屏 npm 输出），完成后提示 `added N packages`
+- **开始菜单文件夹名**：默认使用软件名“校园宠物乐园”（不再显示 `(default)`）
 - **集成**：`start.bat` 使用国内 npm 镜像（registry.npmmirror.com）
 
 ### v0.2.0+ 更新说明

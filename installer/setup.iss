@@ -49,27 +49,27 @@ Name: "chinesesimplified"; MessagesFile: "languages\ChineseSimplified.isl"
 ; ============================================================
 [Messages]
 ; --- 欢迎/介绍页（第一个页面）---
-WelcomeLabel1=欢迎使用 校园宠物乐园 安装向导
-WelcomeLabel2=即将在您的计算机上安装 [name/ver]。%n%n建议先关闭其他程序，点击“下一步”继续。
+WelcomeLabel1=哇塞！你要安装"校园宠物乐园"吗？太好了！
+WelcomeLabel2=我要在你的电脑上装 [name/ver]啦ヾ(๑╹◡╹)ﾉ%n(*＾ω＾)人(＾ω＾*)建议先关闭其他碍眼的程序喵%n快点“下一步”继续｀Д´|
 ; --- “选择安装位置”页 ---
-WizardSelectDir=选择目标位置
-SelectDirDesc=您想将 [name] 安装在哪里？
-SelectDirBrowseLabel=点击“下一步”继续。想换文件夹点“浏览”。
-DiskSpaceMBLabel=至少需要 [mb] MB 可用磁盘空间。
+WizardSelectDir=装在哪里好呢？[・ヘ・?]
+SelectDirDesc=你觉得把 [name] 装在哪里好(゜-゜)
+SelectDirBrowseLabel=觉得没问题啦就点“下一步”哦(oﾟ▽ﾟ)o 想换地方就点“浏览”(´･ᴗ･`)
+DiskSpaceMBLabel=打底需要 [mb] MB 空间哦！ψ(｀∇´)ψ
 ; --- “选择附加任务”页 ---
-WizardSelectTasks=选择附加任务
-SelectTasksDesc=您想让安装程序执行哪些附加任务？
+WizardSelectTasks=要不要点别的？(〃ﾉωﾉ)
+SelectTasksDesc=你想让我执行点别的任务？(*ﾉωﾉ)
 ; --- 准备就绪页 ---
-ReadyLabel1=准备就绪，现在可以开始安装 [name]。
-ReadyLabel2a=点击“安装”继续。想再改改就点“上一步”。
+ReadyLabel1=窝准备好啦！现在就可以开始安装 [name] 啦！٩(๑>◡<๑)۶ 
+ReadyLabel2a=快点“安装”继续！✧*｡٩(ˊᗜˋ*)و✧*｡不过要是想再改改就点“上一步”
 ; --- 安装完成页 ---
-FinishedHeadingLabel=完成 [name] 安装向导
-FinishedLabel=[name] 已安装到您的电脑，可通过桌面/开始菜单快捷方式启动。
-FinishedRestartLabel=安装需重启电脑，现在就重启吗？
-InstallingLabel=正在安装 [name]，请稍候。
+FinishedHeadingLabel=结束啦~へ(;´Д｀へ) 
+FinishedLabel=[name] 已装在您的电脑里啦~(o_ _)o 可通过桌面/开始菜单快捷方式启动(｀＾´)ノ
+FinishedRestartLabel=话说回来，安装要重启电脑诶...现在就重启吗？(o°ω°o)
+InstallingLabel=在装 [name] 啦~饮茶先啦─=≡Σ(((つ•̀ω•́)つ
 ; --- 中途点“取消/X”时弹出的退出提醒窗口 ---
-ExitSetupTitle=退出安装程序
-ExitSetupMessage=安装还没完成哦～现在退出的话，[name] 就不会装上了。%n%n之后想装可以再运行一次这个安装包。%n%n确定现在退出吗？
+ExitSetupTitle=我不装啦！
+ExitSetupMessage=安装还没完成呢(；д；)现在退出的话，校园宠物乐园 就不会装上了%n%n之后想装可以再运行一次这个安装包。|ω･`)%n%n确定现在退出吗？ヾ(>Д<;)))).....
 ; --- 窗口标题 / 顶部 ---
 SetupAppTitle=校园宠物乐园 安装
 SetupWindowTitle=%1 - 安装向导
@@ -139,10 +139,10 @@ procedure InitializeWizard();
 begin
   EntryPage := CreateInputOptionPage(
     wpSelectTasks,
-    '启动方式二选一',
-    '桌面/开始菜单的快捷方式点开哪个入口？',
-    'start.exe：一键启动服务并自动打开浏览器，最省心（推荐）。' + #13#10 +
-    'start.bat：命令行启动，适合喜欢看日志的你（纯英文提示）。',
+    '启动方式选一个吧|･ω･｀)',
+    '桌面/开始菜单的快捷方式点开哪个入口(゜-゜)？',
+    'start.exe：一键启动服务并自动打开浏览器，最省心（推荐）ヽ(￣▽￣)ﾉ' + #13#10 +
+    'start.bat：命令行启动，适合喜欢看日志的你（纯英文提示）(･ω<)☆',
     True, False);
   EntryPage.Add('start.exe（推荐，一条龙：启动+打开浏览器）');
   EntryPage.Add('start.bat（命令行启动，日志看得更清楚）');
@@ -162,7 +162,7 @@ Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Ic
 Name: "{group}\卸载 {#AppName}"; Filename: "{uninstallexe}"
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "立即启动 {#AppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExe}"; Description: "我现在就要启动 {#AppName} ~!"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 ; Only remove what we ship.  Deliberately NOT removing server\data or

@@ -42,6 +42,25 @@ ArchitecturesInstallIn64BitMode=x64compatible
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "languages\ChineseSimplified.isl"
 
+; 让安装向导的文案更口语、亲切一点（覆盖官方语言文件的默认消息）。
+[Messages]
+WelcomeLabel1=嗨！欢迎来到 校园宠物乐园
+WelcomeLabel2=马上要把这个元气满满的小乐园装进你的电脑啦（[name/ver]）～%n%n趁现在顺手把其他程序关一关，一眨眼就好。
+ClickNext=点“下一步”冲鸭！要是反悔了就点“取消”，随时都能退场～
+WizardSelectDir=想把它安在哪个家
+WizardSelectTasks=让乐园更顺手的附加小功能
+SelectDirDesc=把小家伙安在哪儿？挑一个你喜欢的文件夹就好～
+DiskSpaceMBLabel=得给它腾出 [mb] MB 的小地盘，别让它挤到哦
+SelectTasksDesc=除了装好本体，还要给乐园加点什么技能？尽情勾选！
+ReadyLabel1=万事俱备！马上就把 [name] 搬进你的电脑啦
+ReadyLabel2a=点“安装”开冲！想再改改就点“上一步”，选择权在你手里～
+FinishedHeadingLabel=搞定！[name] 安装完成
+FinishedLabel=[name] 已经住进你电脑啦，快通过桌面/开始菜单的快捷方式去玩玩吧！
+FinishedRestartLabel=为完成 [name] 安装得重启一下电脑，现在就来吗？
+InstallingLabel=正在把 [name] 塞进电脑，稍等片刻～
+SetupAppTitle=校园宠物乐园 安装
+SetupWindowTitle=%1 - 安装向导
+
 ; ------------------------------------------------------------
 ; Files shipped: client/dist + server/dist + launchers + package
 ; metadata.  node_modules and server/data are deliberately NOT
@@ -107,12 +126,13 @@ procedure InitializeWizard();
 begin
   EntryPage := CreateInputOptionPage(
     wpSelectTasks,
-    '选择启动方式',
-    '程序的桌面快捷方式指向哪个启动器？',
-    '说明：start.exe 会启动服务并自动打开浏览器；start.bat 为命令行启动方式（纯英文提示）。',
+    '启动方式二选一',
+    '桌面/开始菜单的快捷方式点开哪个入口？',
+    'start.exe：一键启动服务并自动打开浏览器，最省心（推荐）。' + #13#10 +
+    'start.bat：命令行启动，适合喜欢看日志的你（纯英文提示）。',
     True, False);
-  EntryPage.Add('start.exe（推荐，启动服务并自动打开浏览器）');
-  EntryPage.Add('start.bat（命令行启动）');
+  EntryPage.Add('start.exe（推荐，一条龙：启动+打开浏览器）');
+  EntryPage.Add('start.bat（命令行启动，日志看得更清楚）');
   EntryPage.SelectedValueIndex := 0; { default selected = start.exe }
   EntryChoice_Exe := 0;
 end;

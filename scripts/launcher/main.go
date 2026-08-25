@@ -19,7 +19,9 @@ const (
 	appName      = "校园宠物乐园"
 	chinaMirror  = "https://registry.npmmirror.com"
 	startPort    = 3000 // 起始端口；若被占用/系统保留会自动递增
-	maxPortTries = 200  // 最多尝试 200 个端口
+	// 最多尝试的端口数。Windows 的端口保留段可能长达数百个端口（如 3000-3240），
+	// 若只探测 200 个端口，扫完仍到不了可用端口会 fallback 回 3000 导致 EACCES。
+	maxPortTries = 2000
 	healthPath   = "/api/health"
 	// Max sustained progress, reached asymptotically (never hits 100 during a
 	// long-running task); jumps to 100 only when the command succeeds.
@@ -330,11 +332,15 @@ func startServer(dir string, port int) (<-chan struct{}, error) {
 }
 
 // findFreePort returns the first port (from `from` upward) that we can bind.
-// A successful bind proves the port is neither in use nor Windows-reserved
-// (reserved ports return permission denied / EACCES on bind).
+// It listens on ":port" (0.0.0.0) — the same address express binds with
+// app.listen(PORT) — so a port that passes this probe is guaranteed to be one
+// node can actually bind. Windows may reserve whole port ranges for
+// Hyper-V/WSL/Docker; binding those returns permission denied (EACCES) and we
+// skip them. The try count must exceed the reserved range, or we'd fall back to
+// a reserved port and crash with EACCES.
 func findFreePort(from, tries int) int {
 	for p := from; p < from+tries; p++ {
-		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", p))
 		if err == nil {
 			_ = ln.Close()
 			return p

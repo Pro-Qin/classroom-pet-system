@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -20,9 +21,45 @@ const (
 	startPort    = 3000 // 起始端口；若被占用/系统保留会自动递增
 	maxPortTries = 200  // 最多尝试 200 个端口
 	healthPath   = "/api/health"
+	// Max sustained progress, reached asymptotically (never hits 100 during a
+	// long-running task); jumps to 100 only when the command succeeds.
+	progressCap = 95
+	// Progress animation tick + total assumed duration to reach ~cap.
+	progressTick   = 120 * time.Millisecond
 )
 
+// openBrowser is a package var so tests can replace it with a stub.
+var openBrowser = func(url string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	case "darwin":
+		cmd = exec.Command("open", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	_ = cmd.Start()
+}
+
+// pause is a package var so tests can replace it with a no-op.
+var pause = func() {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	fmt.Print("\n  按任意键继续...")
+	var b [1]byte
+	_, _ = os.Stdin.Read(b[:])
+}
+
 func main() {
+	os.Exit(run())
+}
+
+// run returns the process exit code. All side-effectful entry points go
+// through here so the failure paths (notably "do NOT open the browser and keep
+// the window open when the server fails to start") are testable.
+func run() int {
 	initConsole() // set UTF-8 codepage on Windows
 
 	// Determine app directory: folder containing this exe / bat.
@@ -30,7 +67,7 @@ func main() {
 	if err != nil {
 		fmt.Println("[错误] 无法定位程序目录:", err)
 		pause()
-		os.Exit(1)
+		return 1
 	}
 	appDir := filepath.Dir(exe)
 
@@ -45,7 +82,7 @@ func main() {
 	if !hasNode() {
 		stepErr("未检测到 Node.js", "请先安装 Node.js 18 或更高版本：https://nodejs.org")
 		pause()
-		os.Exit(1)
+		return 1
 	}
 
 	// 2. Ensure dependencies. Check a known runtime dep (express) so that a
@@ -58,7 +95,7 @@ func main() {
 		if err := npmInstall(appDir); err != nil {
 			stepErr("依赖安装失败", "请检查网络，或手动在项目目录执行：npm install")
 			pause()
-			os.Exit(1)
+			return 1
 		}
 		fmt.Println()
 	}
@@ -72,7 +109,7 @@ func main() {
 			stepErr("构建失败", "请查看上方错误信息")
 			fmt.Println()
 			pause()
-			os.Exit(1)
+			return 1
 		}
 		fmt.Println()
 	}
@@ -86,25 +123,33 @@ func main() {
 	} else {
 		fmt.Println()
 		fmt.Printf("  ▶ 正在启动服务（端口 %d）...\n", port)
-		if err := startServer(appDir, port); err != nil {
+		done, err := startServer(appDir, port)
+		if err != nil {
 			stepErr("服务启动失败", "")
 			fmt.Println()
 			pause()
-			os.Exit(1)
+			return 1
 		}
-		waitServerReady(port, 15*time.Second)
+		if !waitServerReady(port, 15*time.Second, done) {
+			// 服务未能就绪：报错，保持窗口，绝不打开浏览器，也不直接退出。
+			stepErr("服务启动失败（端口未就绪）", "请检查 'server/dist/index.js' 与端口 "+fmt.Sprint(port)+" 是否被占用；窗口将保持打开供你看日志。")
+			fmt.Println()
+			pause()
+			return 1
+		}
 		fmt.Printf("  ✓ 服务地址：http://localhost:%d\n", port)
 		fmt.Println("    本机其他设备（同一局域网）访问：http://本机IP:" + fmt.Sprint(port))
 		fmt.Println("    按 Ctrl+C 或关闭本窗口即可停止服务。")
 		fmt.Println()
 	}
 
-	// 5. Open browser.
+	// 5. Open browser — only reached when the server is confirmed ready.
 	openBrowser(fmt.Sprintf("http://localhost:%d", port))
 
 	fmt.Println()
 	fmt.Println("  ✓ 已在默认浏览器打开。关闭本窗口 / 按 Ctrl+C 将停止服务。")
 	waitForExit(port)
+	return 0
 }
 
 // printBanner renders an ASCII banner with a clean, professional look.
@@ -150,10 +195,28 @@ func npmRunBuild(dir string) error {
 	return runWithProgress("正在构建产物", cmd)
 }
 
-// runWithProgress runs cmd while drawing a simple progress bar in the console.
-// npm emits lots of output; we suppress it (avoid flooding the bar) and instead
-// show a smooth progress bar, capturing the "added N packages" summary and any
-// trailing error output.
+// progressPercent returns the smoothed progress (0..progressCap) for a given
+// elapsed duration. It decelerates: large jumps early, tiny steps later,
+// asymptotically approaching progressCap so it never looks "stuck at 90"
+// forever — it keeps creeping but slows down. Monotonic non-decreasing.
+func progressPercent(elapsed time.Duration) int {
+	// Normalize elapsed seconds; use a long decay so it gently crawls to cap.
+	sec := elapsed.Seconds()
+	// 1 - 1/(1 + t) approaches 1, so scale to cap. At t=1s -> ~47.5%,
+	// t=3s -> ~71%, t=10s -> ~86%, t=30s -> ~92%, asymptote 95%.
+	p := float64(progressCap) * (1.0 - 1.0/(1.0+sec))
+	if p < 0 {
+		p = 0
+	}
+	if p > float64(progressCap) {
+		p = float64(progressCap)
+	}
+	return int(math.Round(p))
+}
+
+// runWithProgress runs cmd while drawing a smooth, decelerating progress bar.
+// npm output is suppressed (avoid flooding the bar); we capture the "added N
+// packages" summary and trailing error output.
 func runWithProgress(label string, cmd *exec.Cmd) error {
 	fmt.Println()
 	fmt.Println("  " + label + " ...")
@@ -165,6 +228,7 @@ func runWithProgress(label string, cmd *exec.Cmd) error {
 	}
 	cmd.Stderr = cmd.Stdout
 
+	start := time.Now()
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -188,24 +252,16 @@ func runWithProgress(label string, cmd *exec.Cmd) error {
 		}
 	}()
 
-	// Smooth progress bar up to 90%; jump to 100% on success.
-	pct := 0
-	step := 2
+	// Draw a decelerating progress bar (0 -> progressCap) until the command ends.
 	go func() {
-		ticker := time.NewTicker(120 * time.Millisecond)
+		ticker := time.NewTicker(progressTick)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-done:
 				return
 			case <-ticker.C:
-				if pct < 90 {
-					pct += step
-					if pct > 90 {
-						pct = 90
-					}
-				}
-				drawProgress(pct)
+				drawProgress(progressPercent(time.Since(start)))
 			}
 		}
 	}()
@@ -213,7 +269,7 @@ func runWithProgress(label string, cmd *exec.Cmd) error {
 	werr := cmd.Wait()
 
 	if werr != nil {
-		drawProgress(100)
+		drawProgress(progressCap)
 		fmt.Println()
 		tail := strings.TrimSpace(summary.String())
 		if tail != "" {
@@ -235,16 +291,23 @@ func runWithProgress(label string, cmd *exec.Cmd) error {
 var addedRe = regexp.MustCompile(`added\s+\d+\s+packages`)
 
 func drawProgress(pct int) {
+	if pct < 0 {
+		pct = 0
+	}
+	if pct > 100 {
+		pct = 100
+	}
 	const width = 30
 	filled := pct * width / 100
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
 	fmt.Printf("\r  [%s] %3d%%", bar, pct)
 }
 
-// startServer launches `node server/dist/index.js` in the app dir and returns.
-// The chosen port is passed to node via PET_PORT (falling back to PORT).
-// The child is started independent of the parent so it keeps running.
-func startServer(dir string, port int) error {
+// startServer launches `node server/dist/index.js` in the app dir. It returns
+// the process-started signal, the child's done channel (closed the moment the
+// process exits), and any start error. The done channel lets the caller detect
+// an early crash below instead of swallowing it.
+func startServer(dir string, port int) (<-chan struct{}, error) {
 	script := filepath.Join("server", "dist", "index.js")
 	nodeExe := "node"
 	if runtime.GOOS == "windows" {
@@ -256,11 +319,14 @@ func startServer(dir string, port int) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
-		return err
+		return nil, err
 	}
-	// Detach: let it keep running after we exit (Windows GUI case).
-	go func() { _ = cmd.Wait() }()
-	return nil
+	done := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(done)
+	}()
+	return done, nil
 }
 
 // findFreePort returns the first port (from `from` upward) that we can bind.
@@ -286,7 +352,10 @@ func serverAlreadyRunning(port int) bool {
 	return true
 }
 
-func waitServerReady(port int, timeout time.Duration) {
+// waitServerReady polls the health endpoint until it returns OK, the timeout
+// elapses, or the child process exits early (crashed). Returns false if the
+// server never became ready.
+func waitServerReady(port int, timeout time.Duration, done <-chan struct{}) bool {
 	client := &http.Client{Timeout: 2 * time.Second}
 	url := fmt.Sprintf("http://localhost:%d%s", port, healthPath)
 	deadline := time.Now().Add(timeout)
@@ -295,27 +364,20 @@ func waitServerReady(port int, timeout time.Duration) {
 		if err == nil {
 			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
-				return
+				return true
 			}
 		}
-		time.Sleep(500 * time.Millisecond)
+		// If the child already exited (crash), stop waiting for it.
+		select {
+		case <-done:
+			return false
+		case <-time.After(500 * time.Millisecond):
+		}
 	}
+	return false
 }
 
-func openBrowser(url string) {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	case "darwin":
-		cmd = exec.Command("open", url)
-	default:
-		cmd = exec.Command("xdg-open", url)
-	}
-	_ = cmd.Start()
-}
-
-// waitForExit blocks until the server is stopped by the user.
+// waitForExit blocks until the server is no longer reachable (user closed it).
 func waitForExit(port int) {
 	client := &http.Client{Timeout: 2 * time.Second}
 	url := fmt.Sprintf("http://localhost:%d%s", port, healthPath)
@@ -340,14 +402,4 @@ func dirExists(p string) bool {
 func fileExists(p string) bool {
 	info, err := os.Stat(p)
 	return err == nil && !info.IsDir()
-}
-
-// pause waits for a keypress on Windows when stdin is a console.
-func pause() {
-	if runtime.GOOS != "windows" {
-		return
-	}
-	fmt.Print("\n  按任意键继续...")
-	var b [1]byte
-	_, _ = os.Stdin.Read(b[:])
 }

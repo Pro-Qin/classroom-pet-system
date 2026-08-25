@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
-import { loadConfig, updateConfig, APP_VERSION, effectiveGiteeRepo, DEFAULT_GITEE_REPO } from '../config.js';
+import { loadConfig, updateConfig, APP_VERSION, effectiveGiteeRepo, DEFAULT_GITEE_REPO, DEFAULT_UI_STYLE, resolveUiStyles, type UiStyleConfig } from '../config.js';
 import { getDb, nowIso } from '../db/connection.js';
 import { getSetting, setSetting } from '../db/settings.js';
 import { MockTransport, SupabaseTransport, type SyncTransport } from '../sync/transport.js';
@@ -357,6 +357,30 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
         res.status(500).json({ error: '冲突处理失败，请重试' });
       }
     })();
+  });
+
+  // 界面文案风格 - 原始规则（管理端编辑用）：welcome/student/admin 的规则值。
+  app.get('/api/ui/style', (_req, res) => {
+    const cfg = loadConfig();
+    res.json({ ...DEFAULT_UI_STYLE, ...(cfg.uiStyle ?? {}) });
+  });
+
+  // 界面文案风格 - 每界面最终生效风格（前端显示用，登录前后均可读）。
+  app.get('/api/ui/vibe', (_req, res) => {
+    res.json(resolveUiStyles(loadConfig()));
+  });
+
+  // 界面文案风格（管理员修改）：保存原始规则，返回解析后结果。
+  app.post('/api/ui/style', _auth, requireRole(['admin']), (req, res) => {
+    const body = (req.body ?? {}) as Partial<Record<'welcome' | 'student' | 'admin', string>>;
+    const cur = (loadConfig().uiStyle ?? {}) as UiStyleConfig;
+    const patch: UiStyleConfig = {
+      welcome: (['global_formal', 'student_playful', 'global_playful'].includes(body.welcome ?? '') ? body.welcome : cur.welcome) as UiStyleConfig['welcome'],
+      student: (['formal', 'playful'].includes(body.student ?? '') ? body.student : cur.student) as UiStyleConfig['student'],
+      admin: (['global_formal', 'student_playful', 'global_playful'].includes(body.admin ?? '') ? body.admin : cur.admin) as UiStyleConfig['admin'],
+    };
+    const cfg = updateConfig({ uiStyle: patch });
+    res.json({ ok: true, styles: resolveUiStyles(cfg) });
   });
 
   // 更新检查（多源：GitHub 镜像 → Gitee → GitHub；10 分钟缓存；公开版本信息，无需登录）

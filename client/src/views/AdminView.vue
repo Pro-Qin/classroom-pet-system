@@ -224,6 +224,33 @@
             <label class="label">云端备份保留份数（默认 10）</label>
             <input v-model.number="setForm.cloudBackupRetention" type="number" class="input !w-44" min="1" max="365" placeholder="10" />
           </div>
+          <div class="rounded-xl bg-white/5 border border-white/10 p-3 space-y-3">
+            <label class="label !mb-0 flex items-center gap-2"><Palette class="w-4 h-4 text-fuchsia-300" /> 界面文案风格（默认正式）</label>
+            <div>
+              <span class="text-xs text-indigo-200/60 block mb-1">欢迎 / 准备界面</span>
+              <select v-model="setForm.uiStyle.welcome" class="input !w-64">
+                <option value="global_formal">全局正式（默认）</option>
+                <option value="student_playful">仅学生端俏皮（欢迎/准备保持正式）</option>
+                <option value="global_playful">全局俏皮</option>
+              </select>
+            </div>
+            <div>
+              <span class="text-xs text-indigo-200/60 block mb-1">学生界面</span>
+              <select v-model="setForm.uiStyle.student" class="input !w-64">
+                <option value="formal">正式（默认）</option>
+                <option value="playful">俏皮（颜文字萌系）</option>
+              </select>
+            </div>
+            <div>
+              <span class="text-xs text-indigo-200/60 block mb-1">管理界面</span>
+              <select v-model="setForm.uiStyle.admin" class="input !w-64">
+                <option value="global_formal">全局正式（默认）</option>
+                <option value="student_playful">仅学生端俏皮（管理保持正式）</option>
+                <option value="global_playful">全局俏皮</option>
+              </select>
+            </div>
+            <p class="text-xs text-indigo-200/50">俏皮风格会用颜文字萌系口吻，仅影响部分提示文案；切换后点“保存设置”生效。</p>
+          </div>
         <button class="btn btn-primary" @click="saveSettings">保存设置</button>
 
         <hr class="border-white/10" />
@@ -360,6 +387,7 @@ import {
   ShieldCheck, LogOut, BarChart3, RefreshCw, Users, Zap, PawPrint,
   Store, Smile, Settings2, Database, Plus, X, UserPlus, Upload, PenLine, Trash2, Loader2,
   ImagePlus, Gauge, Lock, Download, Archive, FileSpreadsheet, KeyRound, type LucideIcon,
+  Palette,
 } from 'lucide-vue-next';
 import ItemsManager from '../components/ItemsManager.vue';
 import RulesManager from '../components/RulesManager.vue';
@@ -409,7 +437,7 @@ const spForm = reactive({ id: '', name: '', emoji: '', colorFrom: '', colorTo: '
 const speciesAvatarFile = ref<File | null>(null);
 const speciesAvatarPreview = ref('');
 const itemForm = reactive({ id: '', name: '', type: 'food', cost: 10, effectText: '{}', desc: '' });
-const setForm = reactive({ pointsUnit: '积分', adminName: '', giteeRepo: '', giteeEnabled: false, backupMaxMB: 1024, emergencyPwEnabled: true, termName: '默认学期', teacherPassword: '123456', activeSubject: '默认', cloudBackupRetention: 10, subjects: [{ name: '默认', sync: true, enabled: { points: true, pets: true, shop: true, rank: true, avatar: true } }] });
+const setForm = reactive({ pointsUnit: '积分', adminName: '', giteeRepo: '', giteeEnabled: false, backupMaxMB: 1024, emergencyPwEnabled: true, termName: '默认学期', teacherPassword: '123456', activeSubject: '默认', cloudBackupRetention: 10, subjects: [{ name: '默认', sync: true, enabled: { points: true, pets: true, shop: true, rank: true, avatar: true } }], uiStyle: { welcome: 'global_formal' as string, student: 'formal' as string, admin: 'global_formal' as string } });
 const auditLogs = ref<any[]>([]);
 const errorReports = ref<any[]>([]);
 const dataMsg = ref('');
@@ -452,6 +480,11 @@ async function loadAll(): Promise<void> {
   setForm.backupMaxMB = se.backupMaxMB || 1024;
   setForm.emergencyPwEnabled = se.emergencyPwEnabled !== false;
   setForm.termName = se.termName || '默认学期';
+  // 界面文案风格（当前生效规则）
+  const style = (await api<Partial<Record<'welcome' | 'student' | 'admin', string>>>('/ui/style').catch(() => (undefined))) ?? {};
+  if (style.welcome) setForm.uiStyle.welcome = style.welcome;
+  if (style.student) setForm.uiStyle.student = style.student;
+  if (style.admin) setForm.uiStyle.admin = style.admin;
 }
 
 async function addStudent(): Promise<void> {
@@ -651,6 +684,12 @@ async function saveRule(r: any): Promise<void> {
 }
 
 async function saveSettings(): Promise<void> {
+  // 保存界面文案风格（独立接口）
+  try {
+    await api('/ui/style', { method: 'POST', body: JSON.stringify(setForm.uiStyle) });
+  } catch {
+    /* 风格保存失败不阻塞其它设置 */
+  }
   await api('/admin/settings', { method: 'PUT', body: JSON.stringify(setForm) });
   toast('设置已保存', 'success');
   await loadAll();

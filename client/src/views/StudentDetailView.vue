@@ -347,6 +347,7 @@ import {
 } from 'lucide-vue-next';
 import { api, upload } from '../api';
 import { toast } from '../composables/toast';
+import { pick, vibe } from '../composables/useCopyStyle';
 import { cropToCircleBlob } from '../utils/avatar';
 import { useSettings } from '../composables/settings';
 import { useFrostHeader } from '../composables/useFrostHeader';
@@ -573,7 +574,7 @@ async function buyAndUse(item: { id: string; name: string }): Promise<void> {
 async function useItem(itemId: string): Promise<void> {
   try {
     await api(`/students/${studentId}/pet/use-item`, { method: 'POST', body: JSON.stringify({ itemId }) });
-    toast('道具使用成功', 'success');
+    toast(pick('student', { formal: '道具使用成功', playful: '道具用起来咯！效果杠杠的(๑•̀ㅂ•́)و' }), 'success');
     await load();
   } catch (e) {
     toast((e as Error).message, 'error');
@@ -584,7 +585,7 @@ async function doRename(): Promise<void> {
   if (!newName.value.trim()) return;
   try {
     await api(`/students/${studentId}/pet/rename`, { method: 'POST', body: JSON.stringify({ name: newName.value }) });
-    toast('改名成功', 'success');
+    toast(pick('student', { formal: '改名成功', playful: '改名成功！新的名字好好听(´▽`)' }), 'success');
     renameOpen.value = false;
     newName.value = '';
     await load();
@@ -623,7 +624,7 @@ async function doAdopt(): Promise<void> {
       method: 'POST',
       body: JSON.stringify({ speciesId: adoptSpeciesId.value, name: adoptName.value.trim() }),
     });
-    toast('领养成功，欢迎新伙伴！', 'success');
+    toast(pick('student', { formal: '领养成功，欢迎新伙伴！', playful: '欢迎新伙伴加入！(๑>◡<๑) 以后也要好好照顾它哦～' }), 'success');
     adoptSpeciesId.value = '';
     adoptName.value = '';
     await load();

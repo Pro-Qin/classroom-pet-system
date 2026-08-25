@@ -16,14 +16,24 @@
         <div class="mx-auto w-20 h-20 rounded-3xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 grid place-items-center shadow-glow mb-6">
           <PawPrint class="w-10 h-10 text-white" />
         </div>
-        <h1 class="text-3xl font-bold text-indigo-50">欢迎来到校园宠物乐园</h1>
+        <h1 class="text-3xl font-bold text-indigo-50">
+          {{ pick('welcome', { formal: '欢迎来到校园宠物乐园', playful: '嗨！欢迎来到校园宠物乐园ヾ(๑╹◡╹)ﾉ' }) }}
+        </h1>
         <p class="mt-3 text-indigo-200/80 leading-relaxed">
-          一套集 <span class="text-amber-300 font-medium">积分管理</span> 与
-          <span class="text-fuchsia-300 font-medium">宠物养成</span> 于一体的班级激励系统。
-          <br />首次运行，需要完成云端同步与管理员密码的配置。
+          <template v-if="vibe('welcome') === 'playful'">
+            一套把 <span class="text-amber-300 font-medium">积分管理</span> 和
+            <span class="text-fuchsia-300 font-medium">宠物养成</span> 装进一个教室的超级好物！(๑•̀ㅂ•́)و
+            <br />第一次启动嘛，先把这个云同步和管理员密码配好，很快就好啦～
+          </template>
+          <template v-else>
+            一套集 <span class="text-amber-300 font-medium">积分管理</span> 与
+            <span class="text-fuchsia-300 font-medium">宠物养成</span> 于一体的班级激励系统。
+            <br />首次运行，需要完成云端同步与管理员密码的配置。
+          </template>
         </p>
         <button class="btn btn-primary mt-8 px-8 py-3 text-base" @click="next">
-          开始配置 <ArrowRight class="w-4 h-4" />
+          {{ pick('welcome', { formal: '开始配置', playful: '开冲吧！' }) }}
+          <ArrowRight class="w-4 h-4" />
         </button>
       </div>
 
@@ -141,6 +151,7 @@ import { reactive, ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { PawPrint, ArrowRight, ChevronLeft, ChevronRight, Cloud, ShieldCheck, CheckCircle2, Loader2 } from 'lucide-vue-next';
 import { api } from '../api';
+import { pick, vibe } from '../composables/useCopyStyle';
 
 const router = useRouter();
 const step = ref(0);

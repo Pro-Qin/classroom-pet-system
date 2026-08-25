@@ -6,8 +6,12 @@
           <Loader2 class="w-6 h-6 text-white animate-spin" />
         </div>
         <div class="flex-1">
-          <h1 class="text-xl font-bold text-indigo-50">准备界面</h1>
-          <p class="text-sm text-indigo-200/70">检查更新并同步数据库</p>
+          <h1 class="text-xl font-bold text-indigo-50">
+            {{ pick('welcome', { formal: '准备界面', playful: '准备中，稍坐一下下～(´▽`)' }) }}
+          </h1>
+          <p class="text-sm text-indigo-200/70">
+            {{ pick('welcome', { formal: '检查更新并同步数据库', playful: '检查更新 + 同步数据，马上就来(๑•̀ㅂ•́)و' }) }}
+          </p>
         </div>
         <span
           v-if="mode"
@@ -105,7 +109,7 @@
       <!-- 底部 -->
       <div class="mt-8 text-center">
         <button class="btn btn-primary px-8" :disabled="!ready" @click="goLogin">
-          进入登录 <LogIn class="w-4 h-4" />
+          {{ pick('welcome', { formal: '进入登录', playful: '进登录啦～(๑>◡<๑)' }) }} <LogIn class="w-4 h-4" />
         </button>
         <p v-if="error" class="mt-3 text-sm text-amber-300">{{ error }}</p>
       </div>
@@ -118,6 +122,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { Loader2, CheckCircle2, AlertTriangle, Circle, LogIn, WifiOff, Cloud, Download, ArrowDownToLine } from 'lucide-vue-next';
 import { api } from '../api';
+import { pick, vibe } from '../composables/useCopyStyle';
 
 interface Conflict {
   table: string;

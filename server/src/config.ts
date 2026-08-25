@@ -31,7 +31,29 @@ export interface AppConfig {
   tokenSecret: string;
   /** 本设备（一体机）是否跳过开机更新检查 */
   skipUpdateCheckDevice: boolean;
+  /** 界面文案风格（正式/俏皮），分欢迎/学生/管理三区。默认全正式。 */
+  uiStyle: UiStyleConfig;
 }
+
+/** 单界面风格：formal=正式（默认），playful=俏皮（颜文字萌系）。 */
+export type CopyVibe = 'formal' | 'playful';
+/** 欢迎/管理界面的三态规则（用户偏好语义）。 */
+export type VibeRule = 'global_formal' | 'student_playful' | 'global_playful';
+
+export interface UiStyleConfig {
+  /** 欢迎/首次运行界面规则 */
+  welcome: VibeRule;
+  /** 学生端界面（二选一） */
+  student: CopyVibe;
+  /** 管理端界面规则 */
+  admin: VibeRule;
+}
+
+export const DEFAULT_UI_STYLE: UiStyleConfig = {
+  welcome: 'global_formal',
+  student: 'formal',
+  admin: 'global_formal',
+};
 
 const DEFAULTS: AppConfig = {
   adminPasswordHash: '',
@@ -43,7 +65,29 @@ const DEFAULTS: AppConfig = {
   deviceId: '',
   tokenSecret: '',
   skipUpdateCheckDevice: false,
+  uiStyle: DEFAULT_UI_STYLE,
 };
+
+/** 解析某一界面最终生效的风格（formal / playful）。 */
+export function resolveCopyVibe(cfg: AppConfig, screen: 'welcome' | 'student' | 'admin'): CopyVibe {
+  const s = { ...DEFAULT_UI_STYLE, ...(cfg.uiStyle ?? {}) };
+  // “全局俏皮” = 全界面俏皮
+  const globalPlayful = s.welcome === 'global_playful' || s.admin === 'global_playful';
+  const studentPlayful = s.student === 'playful' || s.welcome === 'student_playful' || s.admin === 'student_playful';
+  if (screen === 'student') return studentPlayful ? 'playful' : 'formal';
+  // welcome / admin：global_playful 时俏皮，否则正式（student_playful / global_formal 均正式）
+  if (globalPlayful) return 'playful';
+  return 'formal';
+}
+
+/** 一次性取三区解析后的风格（供前端使用）。 */
+export function resolveUiStyles(cfg: AppConfig): Record<'welcome' | 'student' | 'admin', CopyVibe> {
+  return {
+    welcome: resolveCopyVibe(cfg, 'welcome'),
+    student: resolveCopyVibe(cfg, 'student'),
+    admin: resolveCopyVibe(cfg, 'admin'),
+  };
+}
 
 export function loadConfig(): AppConfig {
   try {

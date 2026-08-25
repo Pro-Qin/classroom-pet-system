@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -134,17 +137,104 @@ func hasNode() bool {
 func npmInstall(dir string) error {
 	cmd := exec.Command("npm", "install", "--registry="+chinaMirror, "--no-audit", "--no-fund")
 	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return runWithProgress("正在安装依赖（国内镜像源，需联网）", cmd)
 }
 
 func npmRunBuild(dir string) error {
 	cmd := exec.Command("npm", "run", "build")
 	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return runWithProgress("正在构建产物", cmd)
+}
+
+// runWithProgress runs cmd while drawing a simple progress bar in the console.
+// npm emits lots of output; we suppress it (avoid flooding the bar) and instead
+// show a smooth progress bar, capturing the "added N packages" summary and any
+// trailing error output.
+func runWithProgress(label string, cmd *exec.Cmd) error {
+	fmt.Println()
+	fmt.Println("  " + label + " ...")
+	fmt.Println()
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	cmd.Stderr = cmd.Stdout
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	var summary strings.Builder
+	var addedLine string
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		sc := bufio.NewScanner(stdout)
+		sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		for sc.Scan() {
+			line := sc.Text()
+			if m := addedRe.FindStringSubmatch(line); m != nil {
+				addedLine = line
+			}
+			if summary.Len() < 8192 {
+				summary.WriteString(line + "\n")
+			}
+		}
+	}()
+
+	// Smooth progress bar up to 90%; jump to 100% on success.
+	pct := 0
+	step := 2
+	go func() {
+		ticker := time.NewTicker(120 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if pct < 90 {
+					pct += step
+					if pct > 90 {
+						pct = 90
+					}
+				}
+				drawProgress(pct)
+			}
+		}
+	}()
+
+	werr := cmd.Wait()
+
+	if werr != nil {
+		drawProgress(100)
+		fmt.Println()
+		tail := strings.TrimSpace(summary.String())
+		if tail != "" {
+			fmt.Println(tail)
+		}
+		return werr
+	}
+
+	drawProgress(100)
+	fmt.Println()
+	if addedLine != "" {
+		fmt.Println("  " + addedLine)
+	} else {
+		fmt.Println("  ✓ 依赖已就绪")
+	}
+	return nil
+}
+
+var addedRe = regexp.MustCompile(`added\s+\d+\s+packages`)
+
+func drawProgress(pct int) {
+	const width = 30
+	filled := pct * width / 100
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
+	fmt.Printf("\r  [%s] %3d%%", bar, pct)
 }
 
 // startServer launches `node server/dist/index.js` in the app dir and returns.

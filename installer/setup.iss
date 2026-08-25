@@ -25,6 +25,9 @@ AppPublisher={#AppPublisher}
 ; (pet.db, uploads, config.json, backups) without admin / UAC.
 DefaultDirName={localappdata}\{#AppNameEn}
 DisableProgramGroupPage=yes
+; Show the welcome/intro page and the "choose install location" page.
+DisableWelcomePage=no
+DisableDirPage=no
 ; Do NOT request admin: the app writes to its own data dir under LocalAppData.
 PrivilegesRequired=lowest
 UsePreviousAppDir=yes
@@ -37,7 +40,7 @@ UninstallDisplayIcon={app}\{#AppExe}
 ArchitecturesInstallIn64BitMode=x64compatible
 
 [Languages]
-Name: "default"; MessagesFile: "compiler:Default.isl"
+Name: "chinesesimplified"; MessagesFile: "languages\ChineseSimplified.isl"
 
 ; ------------------------------------------------------------
 ; Files shipped: client/dist + server/dist + launchers + package

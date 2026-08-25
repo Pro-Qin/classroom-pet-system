@@ -40,8 +40,8 @@ jobs:
         shell: bash
         run: |
           go install github.com/akavel/rsrc@latest
-          cd scripts/launcher
-          rsrc -arch amd64 -ico ../installer/app.ico -o rsrc_amd64.syso
+          cd "$GITHUB_WORKSPACE/scripts/launcher"
+          rsrc -arch amd64 -ico "$GITHUB_WORKSPACE/installer/app.ico" -o rsrc_amd64.syso
           go build -o start.exe .
 
       - name: 安装依赖

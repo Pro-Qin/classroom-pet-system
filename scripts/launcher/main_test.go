@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -123,9 +126,36 @@ func TestRunFailureDoesNotOpenBrowser(t *testing.T) {
 	}
 }
 
+func TestWaitServerReadyTrueWhenServing(t *testing.T) {
+	// A real HTTP server answering /api/health should make waitServerReady
+	// return true (the success-detection half of c9).
+	port := findFreePort(42000, 50)
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == healthPath {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	})}
+	defer srv.Close()
+	go func() { _ = srv.Serve(ln) }()
+
+	// done == nil (children never "exit"); we expect true because the stub is up.
+	ok := waitServerReady(port, 2*time.Second, nil)
+	if !ok {
+		t.Fatalf("expected true when a server answers %s on %d", healthPath, port)
+	}
+}
+
 func mustMkdir(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 }
+

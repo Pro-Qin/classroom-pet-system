@@ -1,42 +1,55 @@
 @echo off
-chcp 65001 >nul
+rem ============================================================
+rem  Campus Pet Paradise - launcher (ASCII-only, no CJK to avoid
+rem  GBK/UTF-8 confusion in cmd.exe). All messages in English.
+rem ============================================================
+setlocal
 cd /d "%~dp0"
-title 校园宠物乐园 - 启动器
+title Campus Pet Paradise - Launcher
 
 echo ============================================
-echo    校园宠物乐园 启动器
-echo    （积分 + 宠物养成 班级激励系统）
+echo   Campus Pet Paradise  Launcher
+echo   (points + pet raising class incentive system)
 echo ============================================
 echo.
 
 where node >nul 2>nul
 if errorlevel 1 (
-    echo [错误] 未检测到 Node.js。
-    echo        请先安装 Node.js 18 或更高版本：https://nodejs.org
+    echo [ERROR] Node.js not found.
+    echo         Install Node.js 18+ from https://nodejs.org
     echo.
-    pause
+    pause >nul
     exit /b 1
 )
 
-if not exist "server\dist\index.js" (
-    echo [首次运行] 未找到构建产物，正在安装依赖并构建（需联网，约 1-3 分钟）...
+if not exist "node_modules" (
+    echo [FIRST RUN] Dependencies not found. Installing via China mirror
+    echo             (needs internet, about 1-3 min)...
     echo.
-    call npm install --no-audit --no-fund
+    call npm install --registry=https://registry.npmmirror.com --no-audit --no-fund
     if errorlevel 1 goto :fail
+    echo.
+)
+
+if not exist "server\dist\index.js" (
+    echo [FIRST RUN] Build output not found. Building...
+    echo.
     call npm run build
     if errorlevel 1 goto :fail
     echo.
 )
 
-echo [启动] 服务地址：http://localhost:3000
-echo        本机其他设备（同一局域网）访问：http://本机IP:3000
-echo        关闭本窗口即停止服务。
+echo [START] Server: http://localhost:3000
+echo         Other devices on the same LAN: http://this-PC-IP:3000
+echo         Close this window to stop the server.
 echo.
-call npm start
+call node server\dist\index.js
 goto :eof
 
 :fail
 echo.
-echo [错误] 构建失败，请检查上方输出（可能需要代理访问 npm 源）。
+echo [ERROR] Operation failed. Check the output above
+echo         (use a mirror / proxy if npm is blocked).
 echo.
-pause
+pause >nul
+endlocal

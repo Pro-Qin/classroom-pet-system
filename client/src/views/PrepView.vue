@@ -83,6 +83,25 @@
         </div>
       </div>
 
+      <!-- 更新可用提示 + 安装按钮 -->
+      <div v-if="updateInfo && hasUpdate" class="mt-4 rounded-xl bg-indigo-500/10 border border-indigo-400/30 px-4 py-3">
+        <div class="flex items-center gap-2 text-sm text-indigo-100">
+          <ArrowDownToLine class="w-4 h-4 text-indigo-300 shrink-0" />
+          <span>{{ updateInfo }}</span>
+        </div>
+        <p class="text-xs text-indigo-200/60 mt-1">
+          将下载并运行安装器（不删除已安装的依赖与数据，增量更新）。
+        </p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button class="btn btn-primary px-4 py-2 text-sm" :disabled="updating" @click="installUpdate">
+            <Loader2 v-if="updating" class="w-4 h-4 animate-spin" />
+            <Download v-else class="w-4 h-4" />
+            {{ updating ? '正在下载并启动安装器…' : '立即更新' }}
+          </button>
+          <span v-if="updateError" class="text-xs text-amber-300 self-center">{{ updateError }}</span>
+        </div>
+      </div>
+
       <!-- 底部 -->
       <div class="mt-8 text-center">
         <button class="btn btn-primary px-8" :disabled="!ready" @click="goLogin">
@@ -97,7 +116,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { Loader2, CheckCircle2, AlertTriangle, Circle, LogIn, WifiOff, Cloud } from 'lucide-vue-next';
+import { Loader2, CheckCircle2, AlertTriangle, Circle, LogIn, WifiOff, Cloud, Download, ArrowDownToLine } from 'lucide-vue-next';
 import { api } from '../api';
 
 interface Conflict {
@@ -129,6 +148,9 @@ const resolving = ref(false);
 const error = ref('');
 const ready = ref(false);
 const updateInfo = ref('');
+const hasUpdate = ref(false);
+const updating = ref(false);
+const updateError = ref('');
 const mode = ref('');
 
 /** 显示当前同步模式（离线/云端），接口为公开的准备阶段接口 */
@@ -155,6 +177,24 @@ function setState(key: string, state: CheckItem['state'], detail = ''): void {
   }
 }
 
+/** 下载并启动安装器（调用后端），增量更新、不删已有依赖与数据。 */
+async function installUpdate(): Promise<void> {
+  updating.value = true;
+  updateError.value = '';
+  try {
+    const r = await api<{ ok: boolean; version: string }>('/updates/install', { method: 'POST' });
+    if (r.ok) {
+      updateInfo.value = `新版本 ${r.version} 已在下载，安装向导即将启动…`;
+      setState('update', 'done', `新版本 ${r.version} 安装器已启动`);
+    }
+  } catch (e) {
+    updateError.value = (e as Error).message;
+    setState('update', 'error', updateError.value);
+  } finally {
+    updating.value = false;
+  }
+}
+
 const tableLabel = (t: string): string =>
   ({ students: '学生', pets: '宠物', point_events: '积分流水', quick_presets: '快捷理由', species: '宠物种类', items: '道具', state_rules: '状态规则' }[t] ?? t);
 const rowLabel = (c: Conflict): string =>
@@ -178,6 +218,7 @@ async function runPrep(): Promise<void> {
     try {
       const up = await api<{ currentVersion: string; latestVersion: string; hasUpdate: boolean; note: string }>('/updates/check');
       updateInfo.value = up.hasUpdate ? `发现新版本 ${up.latestVersion}` : `当前版本 ${up.currentVersion}`;
+      hasUpdate.value = up.hasUpdate;
       setState('update', 'done', updateInfo.value + (up.note ? `（${up.note}）` : ''));
     } catch (e) {
       setState('update', 'error', (e as Error).message);

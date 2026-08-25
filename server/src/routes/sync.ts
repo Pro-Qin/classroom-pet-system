@@ -2,6 +2,8 @@ import express from 'express';
 import type { RequestHandler } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import { spawn } from 'node:child_process';
 import { loadConfig, updateConfig, APP_VERSION, effectiveGiteeRepo, DEFAULT_GITEE_REPO } from '../config.js';
 import { getDb, nowIso } from '../db/connection.js';
 import { getSetting, setSetting } from '../db/settings.js';
@@ -9,6 +11,7 @@ import { MockTransport, SupabaseTransport, type SyncTransport } from '../sync/tr
 import { runSync, resolveConflicts, pushDirty, type ConflictItem, type ConflictChoice } from '../sync/engine.js';
 import { listSnapshots } from '../db/backup.js';
 import { requireRole } from '../middleware.js';
+import { checkAllSources } from '../services/updateSources.js';
 
 /** 校验 Supabase 地址：必须 https 且域名以 .supabase.co 结尾（防 SSRF 把 service key 发给任意主机） */
 export function isValidSupabaseUrl(raw: string): boolean {
@@ -141,60 +144,55 @@ export function parseGiteeRepo(raw: string): { owner: string; repo: string } | n
   return { owner: m[1], repo: m[2] };
 }
 
-/** Gitee 更新检查结果缓存：准备界面每次启动都会调用，避免反复打外网（学校网络可能慢/离线） */
-const updateCache = new Map<string, { at: number; latest: string | null; note: string }>();
-const UPDATE_CACHE_MS = 10 * 60 * 1000; // 10 分钟
+/** 下载安装器到临时目录，返回本地路径。优先尝试多个镜像地址。 */
+async function downloadInstaller(baseUrl: string, assetName: string, version: string): Promise<string> {
+  const tmpDir = path.join(os.tmpdir(), 'pet-campus-update');
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const safeName = assetName || `ClassroomPetSystem-Setup-${version.replace(/^v/i, '')}.exe`;
+  const dest = path.join(tmpDir, safeName);
+  const urls = candidateUrls(baseUrl);
+  let lastErr: Error | null = null;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(120_000), redirect: 'follow' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      fs.writeFileSync(dest, buf);
+      return dest;
+    } catch (e) {
+      lastErr = e as Error;
+    }
+  }
+  throw lastErr ?? new Error('所有镜像下载失败');
+}
 
-async function checkGiteeUpdate(repo: string): Promise<{ latest: string | null; note: string }> {
-  const key = String(repo ?? '').trim().toLowerCase();
-  const cached = updateCache.get(key);
-  if (cached && Date.now() - cached.at < UPDATE_CACHE_MS) {
-    return { latest: cached.latest, note: cached.note };
+/** 对 github-mirror 资产，尝试原始 github 地址，随后加各镜像前缀。 */
+function candidateUrls(baseUrl: string): string[] {
+  const out: string[] = [];
+  if (/^https:\/\/github\.com\//.test(baseUrl)) {
+    // 先镜像（国内快），最后直连 github
+    const MIRRORS = ['https://ghfast.top', 'https://gh-proxy.com', 'https://ghproxy.net', 'https://github.moeyy.xyz'];
+    for (const m of MIRRORS) out.push(`${m}/${baseUrl}`);
+    out.push(baseUrl);
+  } else if (/^https:\/\/gitee\.com\//.test(baseUrl)) {
+    out.push(baseUrl);
+    // gitee 也尝试镜像（可选）
+    out.push(baseUrl);
+  } else {
+    out.push(baseUrl);
   }
-  const parsed = parseGiteeRepo(key);
-  if (!parsed) {
-    const note = '更新源地址无效（应为 owner/repo 或 gitee.com 链接）';
-    updateCache.set(key, { at: Date.now(), latest: null, note });
-    return { latest: null, note };
+  return out;
+}
+
+/** 启动安装向导（detached），不阻塞服务、不删除已有 node_modules/data。 */
+function launchInstaller(installerPath: string): void {
+  if (process.platform !== 'win32') {
+    // 非 Windows 平台仅提示（本产品为 Windows 一体机场景）。
+    console.log('[update] 非 Windows 平台，仅下载到：', installerPath);
+    return;
   }
-  const apiBase = `https://gitee.com/api/v5/repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}`;
-  try {
-    // 优先 releases/latest（语义最准确）
-    const relRes = await fetch(`${apiBase}/releases/latest`, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (relRes.ok) {
-      const data = (await relRes.json()) as { tag_name?: string };
-      const latest = data.tag_name ?? null;
-      updateCache.set(key, { at: Date.now(), latest, note: '' });
-      return { latest, note: '' };
-    }
-    if (relRes.status === 404) {
-      // 很多 Gitee 项目只用 tags 不用 releases：回退到 tags[0]
-      const tagRes = await fetch(`${apiBase}/tags`, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(8000),
-      });
-      if (tagRes.ok) {
-        const tags = (await tagRes.json()) as { name?: string }[];
-        const latest = tags[0]?.name ?? null;
-        const note = latest ? '' : '更新源暂无版本信息';
-        updateCache.set(key, { at: Date.now(), latest, note });
-        return { latest, note };
-      }
-      const note = '更新源仓库不存在或未发布任何版本';
-      updateCache.set(key, { at: Date.now(), latest: null, note });
-      return { latest: null, note };
-    }
-    const note = `更新源响应异常（HTTP ${relRes.status}）`;
-    updateCache.set(key, { at: Date.now(), latest: null, note });
-    return { latest: null, note };
-  } catch {
-    const note = '无法连接更新源（可能离线，请检查网络）';
-    updateCache.set(key, { at: Date.now(), latest: null, note });
-    return { latest: null, note };
-  }
+  const child = spawn('cmd', ['/c', 'start', '', installerPath], { detached: true, stdio: 'ignore' });
+  child.unref();
 }
 
 export function registerSyncRoutes(app: express.Express, _auth: RequestHandler): void {
@@ -361,7 +359,7 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
     })();
   });
 
-  // 更新检查（Gitee 源：真实查询 releases/latest，10 分钟缓存；公开版本信息，无需登录）
+  // 更新检查（多源：GitHub 镜像 → Gitee → GitHub；10 分钟缓存；公开版本信息，无需登录）
   app.get('/api/updates/check', async (_req, res) => {
     const cfg = loadConfig();
     const repo = effectiveGiteeRepo(cfg);
@@ -373,19 +371,53 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
         hasUpdate: false,
         latestVersion: APP_VERSION,
         note: '未配置更新源',
+        sources: [],
       });
       return;
     }
-    const { latest, note } = await checkGiteeUpdate(effectiveGiteeRepo(cfg));
-    const hasUpdate = !!latest && compareVersions(latest, APP_VERSION) > 0;
+    const { sources, highest } = await checkAllSources();
+    const hasUpdate = !!highest && compareVersions(highest, APP_VERSION) > 0;
     res.json({
       enabled: true,
       source: effectiveGiteeRepo(cfg),
       currentVersion: APP_VERSION,
       hasUpdate,
-      latestVersion: latest ?? APP_VERSION,
-      note: note || (hasUpdate ? `发现新版本 ${latest}` : '已是最新版本'),
+      latestVersion: highest ?? APP_VERSION,
+      note: highest && hasUpdate ? `发现新版本 ${highest}` : (highest ? '已是最新版本' : '更新源暂无版本信息'),
+      sources: sources.map((s) => ({ id: s.id, label: s.label, kind: s.kind, latestVersion: s.latestVersion, assetName: s.assetName, assetUrl: s.assetUrl, reachable: s.reachable })),
     });
+  });
+
+  // 下载并启动安装器（增量更新）：从多源中找到可达的安装器地址，
+  // 下载到临时目录并启动 Inno 安装向导。不删除 node_modules / server/data。
+  app.post('/api/updates/install', async (req, res) => {
+    const body = (req.body ?? {}) as { sourceId?: string };
+    const { sources, highest } = await checkAllSources();
+    let assetUrl = '';
+    let assetName = '';
+    // 若客户端指定源，则优先；否则取第一个可达且有安装器的源。
+    if (body.sourceId) {
+      const chosen = sources.find((s) => s.id === body.sourceId);
+      if (chosen && chosen.reachable && chosen.assetUrl) {
+        assetUrl = chosen.assetUrl;
+        assetName = chosen.assetName;
+      }
+    }
+    if (!assetUrl) {
+      const firstReachable = sources.find((s) => s.reachable && s.assetUrl);
+      if (firstReachable) { assetUrl = firstReachable.assetUrl; assetName = firstReachable.assetName; }
+    }
+    if (!assetUrl || !highest || compareVersions(highest, APP_VERSION) <= 0) {
+      res.status(400).json({ error: '当前已是最新版本或无可用安装器' });
+      return;
+    }
+    try {
+      const installerPath = await downloadInstaller(assetUrl, assetName, highest);
+      launchInstaller(installerPath);
+      res.json({ ok: true, path: installerPath, version: highest });
+    } catch (e) {
+      res.status(500).json({ error: '下载或启动安装器失败：' + (e as Error).message });
+    }
   });
 
   // 向导/管理端保存同步配置（管理员专属 + 域名白名单）

@@ -9,4 +9,12 @@ configs/
 .reasonix/
 docs/
 
+# CI 构建产物（安装器 / 启动器 / 图标由 CI 生成）
+release-installer/
+installer/app.ico
+scripts/launcher/start.exe
+
+# Reasonix harness 本地配置
+reasonix.toml
+
 Pet2 - Start pursuing the….json

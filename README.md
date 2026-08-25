@@ -38,14 +38,28 @@ npm run dev
 首次运行会进入**欢迎向导**：配置 Supabase（可跳过，本地模式）→ 设置管理员密码。
 之后每次启动进入**准备界面**：检查更新 + 同步数据库（有冲突时选择保留本机/云端）。
 
-## 一体机一键启动（部署）
+## 一体机一键启动（安装版 / 免安装）
+
+### 方式一：Windows 安装器（推荐，学生/教师机）
+
+在 [Releases](../../releases) 下载 `ClassroomPetSystem-Setup-<版本>.exe`，双击安装：
+
+- 安装后保持原有目录结构（`server` + `client` + 启动器 + `package.json`）
+- 安装向导可**选择程序入口**（默认 **start.exe**，也可选 start.bat）：
+  - `start.exe`：检测 Node → 首次用国内镜像安装依赖 → 构建（如需）→ 启动服务 → 自动打开浏览器
+  - `start.bat`：命令行走同一流程（纯英文提示，避免编码乱码）
+- 桌面快捷方式指向你选择的入口：`start.exe` 或 `start.bat`
+- 安装到用户本地目录（`%LOCALAPPDATA%\CampusPetParadise`），无需管理员权限
+- **增量更新**：升级安装器不会删除已有的 `node_modules` 和 `server/data`（学生/宠物数据、云端密钥等均保留），依赖无需重新下载
+
+### 方式二：免安装（拷贝即用）
 
 1. 在开发机执行 `npm run build`（产物在 `client/dist` + `server/dist`）
 2. 整个项目目录拷贝到一体机（无需 node_modules 之外的东西，已含构建产物）
-3. 双击 **`start.bat`** → 浏览器访问 `http://localhost:3000`
+3. 双击 **`start.bat`** 或 **`start.exe`** → 浏览器访问 `http://localhost:3000`
 4. 同局域网其他设备访问 `http://一体机IP:3000`
 
-> 学校网络可能封锁外网：构建产物完全本地化（无 CDN 依赖），`start.bat` 仅在缺少构建产物时才联网构建。
+> 学校网络可能封锁外网：构建产物完全本地化（无 CDN 依赖），启动器仅在缺少依赖/构建产物时才联网（使用国内 npm 镜像）。
 
 ## 生产模式
 
@@ -84,13 +98,15 @@ npm start         # Node 托管前端产物 + API（localhost:3000）
 │   ├── src/db/             # schema/迁移/种子（幂等）
 │   ├── src/sync/           # 两路同步引擎（mock/supabase 双传输）
 │   ├── src/routes/         # auth/students/teacher/admin/sync
-│   ├── src/services/       # 宠物/积分业务逻辑
+│   ├── src/services/       # 宠物/积分/更新多源探测
 │   └── tests/              # vitest（数据层 + 同步引擎，含冲突/墓碑/快照）
 ├── client/                 # Vue3 前端
 │   └── src/views/          # 欢迎向导/准备/登录/学生/教师/管理/大屏
 ├── supabase/schema.sql     # 云端建表脚本
 ├── scripts/smoke.mjs       # 端到端冒烟测试（14 项）
-└── start.bat               # 一体机一键启动
+├── scripts/launcher/       # Go 源码，编译产出 start.exe（Windows 启动器）
+├── installer/              # Inno Setup 安装器脚本 + 图标生成器
+└── start.bat / start.exe   # 一体机一键启动（start.bat 纯英文）
 ```
 
 ## 测试
@@ -107,7 +123,16 @@ v0.2.0 — 接入真实 Gitee 更新源（准备界面自动检查 releases/late
 
 ---
 
-## v0.2.0+ 更新说明
+## v0.2.1+ 更新说明（打包与更新）
+
+- **Windows 安装器**：GitHub Actions 用 Inno Setup 产出 `ClassroomPetSystem-Setup-<版本>.exe`；安装保持原目录结构，入口可选 **start.exe**（默认）/ start.bat，桌面快捷方式跟随选择
+- **start.exe（Go）**：检测 Node → 国内镜像安装依赖 → 构建 → 启动服务 → 自动打开浏览器
+- **start.bat / kiosk.bat 乱码修复**：改为纯英文（ASCII）提示，cmd 不再出现“不是内部或外部命令”的 GBK/UTF-8 乱码
+- **增量更新**：升级安装器不删除 `node_modules` 与 `server/data`（数据、密钥、依赖均保留）
+- **多源更新检查**：准备界面按 `GitHub 镜像 → Gitee → GitHub` 顺序探测新版本；发现新版本后可在界面“立即更新”，应用自行下载安装器并启动安装向导
+- **集成**：`start.bat` 使用国内 npm 镜像（registry.npmmirror.com）
+
+### v0.2.0+ 更新说明
 
 - **等级经验要求可配置**：教师/管理端「宠物等级」页可修改 7 级起始经验（Lv.1 固定 0，需逐级递增）
 - **未领养宠物**：学生系统显示白底黑字「?」头像（带周期性差色特效），可直接在页面选择种类领养
@@ -127,7 +152,11 @@ v0.2.0 — 接入真实 Gitee 更新源（准备界面自动检查 releases/late
 
 ## GitHub 手动打包
 
-仓库已配置 `.github/workflows/build.yml`：在 GitHub 仓库页 Actions → **Build（手动打包）** → Run workflow，
-即可构建并下载 `client/dist + server/dist + start.bat + kiosk.bat` 的产物压缩包。
+仓库已配置 `.github/workflows/release.yml`：在 GitHub 仓库页 Actions → **Release（自动构建安装器并发布）** → Run workflow，
+即可在 `windows-latest` 上编译 `start.exe`（Go）、构建 `client/dist` + `server/dist`、生成安装器图标，并用 **Inno Setup** 打出
+`ClassroomPetSystem-Setup-<版本>.exe` 安装器并上传到该 tag 的 GitHub Release。
 
-> 开发流程：改动推送到 GitHub，Gitee 镜像自动拉取 GitHub 同步。
+> 说明：
+> - 产物为 **Windows 安装器（.exe）**，不再只是 `.zip` 源码包。
+> - Gitee 公开 API 无法自动上传 release 二进制附件，因此安装器只在 GitHub Release 提供；应用更新会**优先经 GitHub 镜像**（ghfast.top 等）下载该 `.exe`，Gitee 用于版本号探测。
+> - 若需 Gitee 附件，请到 Gitee 仓库 Releases 页面手动上传该 `.exe`。

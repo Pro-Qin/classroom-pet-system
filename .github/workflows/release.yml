@@ -1,4 +1,4 @@
-name: Release（自动构建发布）
+name: Release（自动构建安装器并发布）
 
 on:
   push:
@@ -15,11 +15,12 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: 构建并发布 Release
-    runs-on: ubuntu-latest
+  build-installer:
+    name: 构建并发布安装器（.exe）
+    runs-on: windows-latest
     env:
       RELEASE_TAG: ${{ github.event.inputs.releaseTag || github.ref_name }}
+      APP_VERSION: ${{ github.event.inputs.releaseTag || github.ref_name }}
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -30,6 +31,11 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
       - name: 安装依赖
         run: npm ci --no-audit --no-fund
 
@@ -39,18 +45,46 @@ jobs:
       - name: 构建（client + server）
         run: npm run build
 
-      - name: 打包可部署产物
+      - name: 编译 start.exe（Go launcher）
         run: |
-          mkdir -p release-package
-          cp -r client/dist release-package/client
-          cp -r server/dist release-package/server
-          cp start.bat kiosk.bat deploy.bat deploy.sh package.json README.md release-package/
-          cd release-package
-          zip -qr "../classroom-pet-system-${{ env.RELEASE_TAG }}.zip" .
+          cd scripts/launcher
+          go build -o start.exe .
+        shell: bash
 
-      - name: 创建 GitHub Release
+      - name: 生成安装器图标
+        run: python installer/make_icon.py
+        shell: bash
+
+      - name: 安装 Inno Setup 6
+        run: choco install innosetup -y --no-progress
+
+      - name: 编译 Windows 安装器（Inno Setup）
+        shell: cmd
+        run: |
+          set "ISCC=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          rem strip leading 'v' from version for Inno /DAppVersion
+          set "APP_VERSION_NO_V=%APP_VERSION%"
+          if "%APP_VERSION_NO_V:~0,1%"=="v" set "APP_VERSION_NO_V=%APP_VERSION_NO_V:~1%"
+          "%ISCC%" /DAppVersion=%APP_VERSION_NO_V% installer\setup.iss
+
+      - name: 列出安装器产物
+        run: |
+          ls -la release-installer
+        shell: bash
+
+      - name: 创建 GitHub Release（附安装器 + 标记版压缩包）
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           generate_release_notes: true
-          files: classroom-pet-system-${{ env.RELEASE_TAG }}.zip
+          files: |
+            release-installer/*.exe
+
+      - name: 说明 Gitee 附件同步限制
+        if: ${{ secrets.GITEE_TOKEN != '' }}
+        shell: bash
+        run: |
+          echo "GITEE_TOKEN 已配置，但 Gitee 公开 API 不提供直接上传 release 二进制附件的接口。"
+          echo "安装器已发布到 GitHub Release（本 workflow 产物）。"
+          echo "应用更新逻辑会优先经 GitHub 镜像（ghproxy 等）下载该 .exe；Gitee 用于版本号探测。"
+          echo "如需 Gitee 上也带附件，请到 Gitee 仓库 Releases 页面手动上传 .exe。"

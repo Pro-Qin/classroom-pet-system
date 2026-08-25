@@ -11,7 +11,7 @@ export const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 export const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 export const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 export const DB_FILE = path.join(DATA_DIR, 'pet.db');
-export const APP_VERSION = '0.2.7';
+export const APP_VERSION = '0.2.8';
 /** 默认（锁定）的 Gitee 更新源：管理端不可修改，仅支持此仓库 */
 export const DEFAULT_GITEE_REPO = 'https://gitee.com/am-zzq/classroom-pet-system';
 

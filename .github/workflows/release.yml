@@ -36,6 +36,14 @@ jobs:
         with:
           go-version: '1.22'
 
+      - name: 编译 start.exe（Go launcher，嵌入图标）
+        shell: bash
+        run: |
+          go install github.com/akavel/rsrc@latest
+          cd scripts/launcher
+          rsrc -arch amd64 -ico ../installer/app.ico -o rsrc_amd64.syso
+          go build -o start.exe .
+
       - name: 安装依赖
         run: npm ci --no-audit --no-fund
 
@@ -44,18 +52,6 @@ jobs:
 
       - name: 构建（client + server）
         run: npm run build
-
-      - name: 编译 start.exe（Go launcher）
-        run: |
-          cd scripts/launcher
-          go build -o start.exe .
-        shell: bash
-
-      - name: 生成安装器图标
-        run: |
-          python -m pip install pillow --quiet
-          python installer/make_icon.py
-        shell: bash
 
       - name: 安装 Inno Setup 6
         run: choco install innosetup -y --no-progress

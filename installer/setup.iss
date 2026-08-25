@@ -59,6 +59,13 @@ Source: "..\deploy.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\deploy.sh"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\package.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\package-lock.json"; DestDir: "{app}"; Flags: ignoreversion
+; Workspace package.json are REQUIRED so `npm install` (launcher first-run)
+; can resolve workspace dependencies (express/vue...). Without them npm only
+; installs the 26 root devDependencies -> ERR_MODULE_NOT_FOUND express.
+Source: "..\server\package.json"; DestDir: "{app}\server"; Flags: ignoreversion
+Source: "..\client\package.json"; DestDir: "{app}\client"; Flags: ignoreversion
+; Icon file so desktop / start-menu shortcuts have a real icon.
+Source: "..\installer\app.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Make the runtime data directory writable (created lazily; kept empty here).
@@ -112,10 +119,10 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 
 [Icons]
 ; Desktop shortcut -> whichever entry the user chose.  Only one fires.
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon; Check: UseExeEntry; WorkingDir: "{app}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppBat}"; Tasks: desktopicon; Check: UseBatEntry; WorkingDir: "{app}"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon; Check: UseExeEntry; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppBat}"; Tasks: desktopicon; Check: UseBatEntry; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"
 ; Start-menu shortcut -> the app name (default), always created.
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"
+Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"
 Name: "{group}\卸载 {#AppName}"; Filename: "{uninstallexe}"
 
 [Run]

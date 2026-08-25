@@ -9,10 +9,17 @@ configs/
 .reasonix/
 docs/
 
-# CI 构建产物（安装器 / 启动器 / 图标由 CI 生成）
+# CI 构建产物（安装器 / 启动器由 CI 生成）
 release-installer/
-installer/app.ico
 scripts/launcher/start.exe
+scripts/launcher/*.syso
+
+# 图标候选/中间产物（app.ico 作为最终图标已提交到仓库）
+installer/icons/
+installer/app_big.png
+installer/icon_lucide.png
+installer/icon_preview.png
+installer/web_preview.png
 
 # Reasonix harness 本地配置
 reasonix.toml

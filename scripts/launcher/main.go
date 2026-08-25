@@ -19,6 +19,8 @@ const (
 )
 
 func main() {
+	initConsole() // set UTF-8 codepage on Windows
+
 	// Determine app directory: folder containing this exe / bat.
 	exe, err := os.Executable()
 	if err != nil {
@@ -33,29 +35,24 @@ func main() {
 		appDir = cwd
 	}
 
-	fmt.Println("============================================")
-	fmt.Println("  校园宠物乐园  启动器 (start.exe)")
-	fmt.Println("  积分 + 宠物养成 班级激励系统")
-	fmt.Println("============================================")
-	fmt.Println()
+	printBanner()
 
 	// 1. Check Node.js
 	if !hasNode() {
-		fmt.Println("[错误] 未检测到 Node.js。")
-		fmt.Println("       请先安装 Node.js 18 或更高版本：https://nodejs.org")
-		fmt.Println()
+		stepErr("未检测到 Node.js", "请先安装 Node.js 18 或更高版本：https://nodejs.org")
 		pause()
 		os.Exit(1)
 	}
 
-	// 2. Ensure dependencies (only if node_modules missing).
-	if !dirExists(filepath.Join(appDir, "node_modules")) {
-		fmt.Println("[首次运行] 未找到依赖，正在安装（国内镜像源，需联网，约 1-3 分钟）...")
+	// 2. Ensure dependencies. Check a known runtime dep (express) so that a
+	//    partially-installed node_modules (e.g. only root devDeps) still
+	//    triggers a full reinstall via npm workspaces.
+	if !dirExists(filepath.Join(appDir, "node_modules", "express")) {
+		fmt.Println()
+		fmt.Println("  ▶ 首次运行：正在安装依赖（国内镜像源，需联网，约 1-3 分钟）...")
 		fmt.Println()
 		if err := npmInstall(appDir); err != nil {
-			fmt.Println("[错误] 依赖安装失败：", err)
-			fmt.Println("       请检查网络，或手动在项目目录执行：npm install")
-			fmt.Println()
+			stepErr("依赖安装失败", "请检查网络，或手动在项目目录执行：npm install")
 			pause()
 			os.Exit(1)
 		}
@@ -64,10 +61,11 @@ func main() {
 
 	// 3. Ensure build artifacts (if server/dist missing).
 	if !fileExists(filepath.Join(appDir, "server", "dist", "index.js")) {
-		fmt.Println("[首次运行] 未找到构建产物，正在构建...")
+		fmt.Println()
+		fmt.Println("  ▶ 首次运行：正在构建产物...")
 		fmt.Println()
 		if err := npmRunBuild(appDir); err != nil {
-			fmt.Println("[错误] 构建失败：", err)
+			stepErr("构建失败", "请查看上方错误信息")
 			fmt.Println()
 			pause()
 			os.Exit(1)
@@ -77,27 +75,49 @@ func main() {
 
 	// 4. Start server.
 	if serverAlreadyRunning() {
-		fmt.Printf("[启动] 服务已运行：http://localhost:%d\n", serverPort)
+		fmt.Printf("\n  ✓ 服务已在运行：http://localhost:%d\n", serverPort)
 	} else {
-		fmt.Println("[启动] 正在启动服务...")
+		fmt.Println()
+		fmt.Println("  ▶ 正在启动服务...")
 		if err := startServer(appDir); err != nil {
-			fmt.Println("[错误] 服务启动失败：", err)
+			stepErr("服务启动失败", "")
 			fmt.Println()
 			pause()
 			os.Exit(1)
 		}
 		waitServerReady(15 * time.Second)
-		fmt.Printf("[启动] 服务地址：http://localhost:%d\n", serverPort)
-		fmt.Println("       本机其他设备（同一局域网）访问：http://本机IP:3000")
-		fmt.Println("       按 Ctrl+C 或关闭本窗口即可停止服务。")
+		fmt.Printf("  ✓ 服务地址：http://localhost:%d\n", serverPort)
+		fmt.Println("    本机其他设备（同一局域网）访问：http://本机IP:3000")
+		fmt.Println("    按 Ctrl+C 或关闭本窗口即可停止服务。")
 		fmt.Println()
 	}
 
 	// 5. Open browser.
 	openBrowser(fmt.Sprintf("http://localhost:%d", serverPort))
 
-	fmt.Println("已在默认浏览器打开。关闭本窗口 / 按 Ctrl+C 将停止服务。")
+	fmt.Println()
+	fmt.Println("  ✓ 已在默认浏览器打开。关闭本窗口 / 按 Ctrl+C 将停止服务。")
 	waitForExit()
+}
+
+// printBanner renders an ASCII banner with a clean, professional look.
+func printBanner() {
+	line := "=================================================="
+	fmt.Println(line)
+	fmt.Println("           校园宠物乐园 · 班级激励系统")
+	fmt.Println("           积 分 管 理  ·  宠 物 养 成")
+	fmt.Println(line)
+	fmt.Println("        ( start.exe · Web 启动器 )")
+	fmt.Println()
+}
+
+func stepErr(title string, hint string) {
+	fmt.Println()
+	fmt.Println("  ✗ " + title)
+	if hint != "" {
+		fmt.Println("    " + hint)
+	}
+	fmt.Println()
 }
 
 // hasNode reports whether node is on PATH.
@@ -185,11 +205,8 @@ func openBrowser(url string) {
 	_ = cmd.Start()
 }
 
-// waitForExit blocks until the server process list can no longer be distinguished
-// (the user closes the launcher / stops the server). We simply hold the window open
-// so Ctrl+C works; on Windows the node child keeps running independently.
+// waitForExit blocks until the server is stopped by the user.
 func waitForExit() {
-	// Use a simplistic approach: keep running until the service is stopped by user.
 	client := &http.Client{Timeout: 2 * time.Second}
 	url := fmt.Sprintf("http://localhost:%d%s", serverPort, healthPath)
 	ticker := time.NewTicker(2 * time.Second)
@@ -197,7 +214,8 @@ func waitForExit() {
 	for range ticker.C {
 		resp, err := client.Get(url)
 		if err != nil {
-			fmt.Println("[停止] 服务已停止。")
+			fmt.Println()
+			fmt.Println("  ✗ 服务已停止。")
 			return
 		}
 		_ = resp.Body.Close()
@@ -219,7 +237,7 @@ func pause() {
 	if runtime.GOOS != "windows" {
 		return
 	}
-	fmt.Print("按任意键继续...")
+	fmt.Print("\n  按任意键继续...")
 	var b [1]byte
 	_, _ = os.Stdin.Read(b[:])
 }

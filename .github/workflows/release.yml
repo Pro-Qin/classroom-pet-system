@@ -52,7 +52,9 @@ jobs:
         shell: bash
 
       - name: 生成安装器图标
-        run: python installer/make_icon.py
+        run: |
+          python -m pip install pillow --quiet
+          python installer/make_icon.py
         shell: bash
 
       - name: 安装 Inno Setup 6

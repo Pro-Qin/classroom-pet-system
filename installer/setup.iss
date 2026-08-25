@@ -57,7 +57,7 @@ WelcomeLabel2=我要在你的电脑上装 [name/ver]啦ヾ(๑╹◡╹)ﾉ%n(*�
 WizardSelectDir=装在哪里好呢？[・ヘ・?]
 SelectDirDesc=你觉得把 [name] 装在哪里好(゜-゜)
 SelectDirBrowseLabel=觉得没问题啦就点“下一步”哦(oﾟ▽ﾟ)o 想换地方就点“浏览”(´･ᴗ･`)
-DiskSpaceMBLabel=打底需要 [mb] MB 空间哦！ψ(｀∇´)ψ
+DiskSpaceMBLabel=装好后大约占 200 MB 空间哦（含首次运行时自动下载的依赖 ~190MB）！ψ(｀∇´)ψ
 ; --- “选择附加任务”页 ---
 WizardSelectTasks=要不要点别的？(〃ﾉωﾉ)
 SelectTasksDesc=你想让我执行点别的任务？(*ﾉωﾉ)

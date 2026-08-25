@@ -42,22 +42,35 @@ ArchitecturesInstallIn64BitMode=x64compatible
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "languages\ChineseSimplified.isl"
 
-; 让安装向导的文案更口语、亲切一点（覆盖官方语言文件的默认消息）。
+; ============================================================
+;  ★ 文案配置区 ★  —— 想改安装向导的任何文字，直接改下面引号里的内容即可。
+;  改完重新打包生效。每行 "键=文字"，等号右边就是要显示的文字。
+;  占位符：%n=换行，[name]=软件名，[name/ver]=名称 版本，[mb]=磁盘大小。
+; ============================================================
 [Messages]
-WelcomeLabel1=嗨！欢迎来到 校园宠物乐园
-WelcomeLabel2=马上要把这个元气满满的小乐园装进你的电脑啦（[name/ver]）～%n%n趁现在顺手把其他程序关一关，一眨眼就好。
-ClickNext=点“下一步”冲鸭！要是反悔了就点“取消”，随时都能退场～
-WizardSelectDir=想把它安在哪个家
-WizardSelectTasks=让乐园更顺手的附加小功能
-SelectDirDesc=把小家伙安在哪儿？挑一个你喜欢的文件夹就好～
-DiskSpaceMBLabel=得给它腾出 [mb] MB 的小地盘，别让它挤到哦
-SelectTasksDesc=除了装好本体，还要给乐园加点什么技能？尽情勾选！
-ReadyLabel1=万事俱备！马上就把 [name] 搬进你的电脑啦
-ReadyLabel2a=点“安装”开冲！想再改改就点“上一步”，选择权在你手里～
-FinishedHeadingLabel=搞定！[name] 安装完成
-FinishedLabel=[name] 已经住进你电脑啦，快通过桌面/开始菜单的快捷方式去玩玩吧！
-FinishedRestartLabel=为完成 [name] 安装得重启一下电脑，现在就来吗？
-InstallingLabel=正在把 [name] 塞进电脑，稍等片刻～
+; --- 欢迎/介绍页（第一个页面）---
+WelcomeLabel1=欢迎使用 校园宠物乐园 安装向导
+WelcomeLabel2=即将在您的计算机上安装 [name/ver]。%n%n建议先关闭其他程序，点击“下一步”继续。
+; --- “选择安装位置”页 ---
+WizardSelectDir=选择目标位置
+SelectDirDesc=您想将 [name] 安装在哪里？
+SelectDirBrowseLabel=点击“下一步”继续。想换文件夹点“浏览”。
+DiskSpaceMBLabel=至少需要 [mb] MB 可用磁盘空间。
+; --- “选择附加任务”页 ---
+WizardSelectTasks=选择附加任务
+SelectTasksDesc=您想让安装程序执行哪些附加任务？
+; --- 准备就绪页 ---
+ReadyLabel1=准备就绪，现在可以开始安装 [name]。
+ReadyLabel2a=点击“安装”继续。想再改改就点“上一步”。
+; --- 安装完成页 ---
+FinishedHeadingLabel=完成 [name] 安装向导
+FinishedLabel=[name] 已安装到您的电脑，可通过桌面/开始菜单快捷方式启动。
+FinishedRestartLabel=安装需重启电脑，现在就重启吗？
+InstallingLabel=正在安装 [name]，请稍候。
+; --- 中途点“取消/X”时弹出的退出提醒窗口 ---
+ExitSetupTitle=退出安装程序
+ExitSetupMessage=安装还没完成哦～现在退出的话，[name] 就不会装上了。%n%n之后想装可以再运行一次这个安装包。%n%n确定现在退出吗？
+; --- 窗口标题 / 顶部 ---
 SetupAppTitle=校园宠物乐园 安装
 SetupWindowTitle=%1 - 安装向导
 

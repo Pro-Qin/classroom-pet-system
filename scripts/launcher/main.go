@@ -125,6 +125,8 @@ func run() int {
 	} else {
 		fmt.Println()
 		fmt.Printf("  ▶ 正在启动服务（端口 %d）...\n", port)
+		// 开机自检：杀掉上次运行残留的服务进程，避免端口/进程堆积。
+		killStaleServer(appDir)
 		done, err := startServer(appDir, port)
 		if err != nil {
 			stepErr("服务启动失败", "")
@@ -147,8 +149,8 @@ func run() int {
 
 	// 5. Open browser — only reached when the server is confirmed ready.
 	openBrowser(fmt.Sprintf("http://localhost:%d", port))
-	// 浏览器打开后，把启动器终端最小化到任务栏（服务靠心跳维持；浏览器关闭时端自动停止）。
-	minimizeConsole()
+	// 浏览器打开后，把启动器终端切到后台（不最小化、不夺焦点），服务靠心跳维持。
+	minToBackground()
 
 	fmt.Println()
 	fmt.Println("  ✓ 已在默认浏览器打开。关闭本窗口 / 按 Ctrl+C 将停止服务。")
@@ -326,12 +328,39 @@ func startServer(dir string, port int) (<-chan struct{}, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
+	// 记录我们启动的服务进程 PID，供下次开机杀残留进程用。
+	recordServerPid(dir, cmd.Process.Pid)
 	done := make(chan struct{})
 	go func() {
 		_ = cmd.Wait()
+		clearServerPid(dir)
 		close(done)
 	}()
 	return done, nil
+}
+
+// killStaleServer 杀掉上一次运行时记录到 pid 文件的服务进程（开机自检：清掉残留后台进程）。
+func killStaleServer(dir string) {
+	pidFile := filepath.Join(dir, ".pet_server.pid")
+	raw, err := os.ReadFile(pidFile)
+	if err != nil {
+		return
+	}
+	pid := strings.TrimSpace(string(raw))
+	if pid == "" {
+		return
+	}
+	// taskkill /PID x /F —— 只杀我们自己记录的服务进程。
+	_ = exec.Command("taskkill", "/PID", pid, "/F").Run()
+	_ = os.Remove(pidFile)
+}
+
+func recordServerPid(dir string, pid int) {
+	_ = os.WriteFile(filepath.Join(dir, ".pet_server.pid"), []byte(fmt.Sprint(pid)), 0o644)
+}
+
+func clearServerPid(dir string) {
+	_ = os.Remove(filepath.Join(dir, ".pet_server.pid"))
 }
 
 // findFreePort returns the first port (from `from` upward) that we can bind.

@@ -1,4 +1,19 @@
 <template>
+  <!-- 全屏遮罩：服务端已停止/断连提醒 -->
+  <div v-if="serverDown" class="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm grid place-items-center p-6">
+    <div class="glass w-full max-w-md p-8 text-center animate-fadeUp">
+      <div class="mx-auto w-16 h-16 rounded-full bg-rose-500/20 grid place-items-center mb-4">
+        <ServerOff class="w-8 h-8 text-rose-300" />
+      </div>
+      <h2 class="text-xl font-bold text-indigo-50">与后台服务断开连接</h2>
+      <p class="mt-2 text-sm text-indigo-200/70 leading-relaxed">
+        服务可能已停止（例如浏览器关闭后自动结束）。<br />
+        请重新双击启动器 <b>start.exe</b> 来恢复服务。
+      </p>
+      <button class="btn btn-primary mt-6 px-6" @click="reloadPage"><RefreshCw class="w-4 h-4" /> 重新连接</button>
+    </div>
+  </div>
+
   <!-- 全局漂浮光斑与标题水印 -->
   <div class="bg-orb w-72 h-72 left-[-6rem] top-[-4rem] bg-indigo-600/30" />
   <div class="bg-orb w-80 h-80 right-[-8rem] top-[30%] bg-fuchsia-600/25" style="animation-delay:-6s" />
@@ -32,7 +47,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { Loader2, Cloud, WifiOff } from 'lucide-vue-next';
+import { Loader2, Cloud, WifiOff, ServerOff, RefreshCw } from 'lucide-vue-next';
 import { api } from './api';
 import { toast } from './composables/toast';
 import ToastHost from './components/ToastHost.vue';
@@ -51,6 +66,8 @@ const bootState = ref<'loading' | 'ready'>('loading');
 const syncPill = reactive({ visible: false, mode: '', text: '', cls: '', title: '' });
 let syncTimer: ReturnType<typeof setInterval> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let hbFail = 0;
+const serverDown = ref(false);
 
 async function refreshSyncPill(): Promise<void> {
   try {
@@ -130,15 +147,25 @@ onMounted(() => {
   refreshSyncPill();
   syncTimer = setInterval(refreshSyncPill, 60_000);
   // 心跳：配合 start.exe 的"浏览器关闭→后端自动结束"。
-  // 页面打开期间周期上报，浏览器关闭/标签关闭后服务端在超时后自动停止。
+  // 页面打开期间周期上报；若连续多次失败，判定服务端已停止，弹出全屏遮罩提醒。
   heartbeatTimer = setInterval(() => {
-    void api('/heartbeat', { method: 'POST' }).catch(() => {
-      /* 服务端不可达时忽略（设备单机场景） */
-    });
+    fetch('/api/heartbeat', { method: 'POST' })
+      .then((r) => {
+        if (r.ok) { hbFail = 0; serverDown.value = false; }
+        else { hbFail++; }
+      })
+      .catch(() => { hbFail++; })
+      .finally(() => {
+        if (hbFail >= 3) serverDown.value = true;
+      });
   }, 5000);
 });
 onUnmounted(() => {
   if (syncTimer) clearInterval(syncTimer);
   if (heartbeatTimer) clearInterval(heartbeatTimer);
 });
+
+function reloadPage(): void {
+  window.location.reload();
+}
 </script>

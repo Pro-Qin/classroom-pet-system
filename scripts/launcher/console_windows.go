@@ -15,14 +15,15 @@ func initConsole() {
 	kernel32.NewProc("SetConsoleCP").Call(65001)
 }
 
-// minimizeConsole minimizes the current console window so it drops to the
-// taskbar once the browser opens (user only needs the web UI afterwards).
-func minimizeConsole() {
+// minToBackground sends the console window to the background WITHOUT minimizing
+// to the taskbar, so it sits behind the browser and doesn't steal focus.
+// ShowWindow(hwnd, SW_SHOWNA=8) shows the window without activating it.
+func minToBackground() {
 	user32 := syscall.NewLazyDLL("user32.dll")
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	hwnd, _, _ := kernel32.NewProc("GetConsoleWindow").Call()
 	if hwnd != 0 {
-		// 6 = SW_MINIMIZE
-		user32.NewProc("ShowWindow").Call(hwnd, 6)
+		user32.NewProc("ShowWindow").Call(hwnd, 8) // SW_SHOWNA
+		user32.NewProc("SetWindowPos").Call(hwnd, 1 /*HWND_BOTTOM*/, 0, 0, 0, 0, 0x0001|0x0002|0x0010) // SWP_NOMOVE|NOSIZE|NOACTIVATE
 	}
 }

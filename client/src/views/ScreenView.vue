@@ -64,9 +64,11 @@
       </main>
     </Transition>
 
-    <!-- 进度指示 -->
-    <div class="fixed bottom-24 left-1/2 -translate-x-1/2 flex gap-2 z-10">
+    <!-- 进度指示 + 手动切页 -->
+    <div class="fixed bottom-24 left-1/2 -translate-x-1/2 flex items-center gap-3 z-10">
+      <button class="btn btn-ghost !py-1.5 !px-3" title="上一页" @click="prevView"><ChevronLeft class="w-4 h-4" /></button>
       <span v-for="v in views" :key="v" class="w-3 h-3 rounded-full transition-all duration-500" :class="view === v ? 'bg-indigo-300 scale-125' : 'bg-white/15'" />
+      <button class="btn btn-ghost !py-1.5 !px-3" title="下一页" @click="nextView"><ChevronRight class="w-4 h-4" /></button>
     </div>
 
     <!-- 底部退出（一体机大按钮） -->
@@ -80,7 +82,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { LogOut } from 'lucide-vue-next';
+import { LogOut, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import { api } from '../api';
 import { useSettings } from '../composables/settings';
 import { getLocalSetting } from '../composables/useLocalSettings';
@@ -160,6 +162,15 @@ async function load(): Promise<void> {
 
 function tick(): void {
   nowText.value = new Date().toLocaleString('zh-CN', { hour12: false });
+}
+
+function nextView(): void {
+  view.value = view.value === 'rank' ? 'pets' : 'rank';
+  if (view.value === 'pets') load();
+}
+function prevView(): void {
+  view.value = view.value === 'rank' ? 'pets' : 'rank';
+  if (view.value === 'pets') load();
 }
 
 // 退出大屏：大屏通常以独立 Edge 应用窗口打开（kiosk.bat 用 --app）。

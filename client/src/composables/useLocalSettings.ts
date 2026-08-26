@@ -7,9 +7,10 @@ export interface LocalSettings {
   heartbeatTimeoutSec: number;
   autoStart: boolean;
   logToFile: boolean;
+  logCapMB: number;
 }
 
-const defaults: LocalSettings = { kioskInterval: 10, heartbeatTimeoutSec: 120, autoStart: false, logToFile: false };
+const defaults: LocalSettings = { kioskInterval: 10, heartbeatTimeoutSec: 120, autoStart: false, logToFile: true, logCapMB: 1024 };
 
 const state = ref<LocalSettings>({ ...defaults });
 let loaded = false;

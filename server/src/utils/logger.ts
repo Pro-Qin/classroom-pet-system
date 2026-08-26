@@ -3,7 +3,7 @@ import path from 'node:path';
 import { DATA_DIR } from '../config.js';
 
 const LOG_DIR = path.join(DATA_DIR, 'logs');
-const MAX_LOG_FILES = 30;
+const MAX_LOG_BYTES = 1024 * 1024 * 1024; // 默认 1GB，超出自动删除最旧日志
 
 function ensureLogDir(): void {
   fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -17,15 +17,24 @@ function rotate(): void {
   ensureLogDir();
   const files = fs
     .readdirSync(LOG_DIR)
-    .filter((f) => /^\d{4}-\d{2}-\d{2}\.log$/.test(f))
-    .sort();
-  while (files.length > MAX_LOG_FILES) {
+    .filter((f) => /\.log$/.test(f))
+    .map((f) => ({ f, size: safeSize(path.join(LOG_DIR, f)) }))
+    .sort((a, b) => a.f.localeCompare(b.f)); // 旧→新
+  let total = files.reduce((s, x) => s + x.size, 0);
+  while (files.length > 0 && total > MAX_LOG_BYTES) {
     const old = files.shift()!;
+    total -= old.size;
     try {
-      fs.unlinkSync(path.join(LOG_DIR, old));
-    } catch {
-      /* ignore */
-    }
+      fs.unlinkSync(path.join(LOG_DIR, old.f));
+    } catch { /* ignore */ }
+  }
+}
+
+function safeSize(p: string): number {
+  try {
+    return fs.statSync(p).size;
+  } catch {
+    return 0;
   }
 }
 

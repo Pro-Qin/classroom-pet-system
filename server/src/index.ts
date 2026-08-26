@@ -21,7 +21,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let lastHeartbeatAt = 0;
 let heartbeatStarted = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-const HEARTBEAT_TIMEOUT_MS = 30_000; // 无心跳超过 30s 判定浏览器已关闭
+// 本次运行有效的心跳超时（秒）覆盖：由本机设置保存或"仅一次"按钮写入，优先于服务端 config。
+let heartbeatOverrideSec: number | null = null;
 
 export function createApp(): express.Express {
   const app = express();
@@ -86,6 +87,7 @@ export function createApp(): express.Express {
   // 浏览器心跳：前端 App 周期性调用；配合 start.exe 的"浏览器关闭→后端自动结束"。
   // 仅当由启动器拉起（PET_PORT 存在）且已收到过一次心跳后才启用自动停止。
   // 失联超时默认 120s（管理端可改 config.heartbeatTimeoutSec）。
+  // 前端本机设置保存 / "仅一次"按钮会经 POST /api/heartbeat/config 写入本次运行覆盖值。
   if (process.env.PET_PORT) {
     app.post('/api/heartbeat', (_req, res) => {
       lastHeartbeatAt = Date.now();
@@ -94,7 +96,10 @@ export function createApp(): express.Express {
         if (!heartbeatTimer) {
           heartbeatTimer = setInterval(() => {
             if (!heartbeatStarted) return;
-            const timeoutMs = (loadConfig().heartbeatTimeoutSec || 120) * 1000;
+            // 覆盖值 0 = 本次运行不自动停；否则用覆盖值或服务端配置。
+            const sec = heartbeatOverrideSec != null ? heartbeatOverrideSec : (loadConfig().heartbeatTimeoutSec || 120);
+            if (sec <= 0) return; // 本次不自动停止
+            const timeoutMs = sec * 1000;
             if (Date.now() - lastHeartbeatAt > timeoutMs) {
               console.log('[heartbeat] 长时间未收到浏览器心跳，服务自动停止。');
               process.exit(0);
@@ -104,6 +109,17 @@ export function createApp(): express.Express {
         }
       }
       res.json({ ok: true });
+    });
+
+    // 设置本次运行的心跳超时（秒）；0 = 本次不自动停止。
+    app.post('/api/heartbeat/config', (req, res) => {
+      const body = (req.body ?? {}) as { timeoutSec?: number };
+      let sec = Number(body.timeoutSec);
+      if (!Number.isFinite(sec)) sec = 120;
+      if (sec < 0) sec = 0;
+      if (sec > 3600) sec = 3600;
+      heartbeatOverrideSec = sec;
+      res.json({ ok: true, heartbeatTimeoutSec: sec });
     });
   }
 

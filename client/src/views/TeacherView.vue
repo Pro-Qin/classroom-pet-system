@@ -258,11 +258,21 @@
               <p class="text-xs text-indigo-200/70 mb-2">新增快捷预设（无数量上限）</p>
               <div class="flex gap-2">
                 <input v-model="newPreset.label" class="input !py-1.5 !text-sm flex-1" placeholder="名称，如：黑板报加分" @keyup.enter="addPreset" />
-                <input v-model.number="newPreset.delta" type="number" class="input !py-1.5 !text-sm !w-20 text-center" placeholder="±分" />
+                <button
+                  class="btn !py-1.5 !px-3 text-xs shrink-0"
+                  :class="newPreset.sign === '+' ? 'bg-emerald-500/15 text-emerald-200 border border-emerald-400/30' : 'bg-rose-500/15 text-rose-200 border border-rose-400/30'"
+                  type="button"
+                  title="点击切换 加分 / 扣分"
+                  @click="togglePresetSign"
+                >
+                  {{ newPreset.sign }}
+                </button>
+                <input v-model.number="newPreset.delta" type="number" class="input !py-1.5 !text-sm !w-20 text-center" placeholder="分" />
                 <button class="btn btn-primary !py-1.5 !px-3 text-xs" @click="addPreset">
                   <Plus class="w-3.5 h-3.5" /> 添加
                 </button>
               </div>
+              <p class="text-xs text-indigo-200/50 mt-1">点 ± 在加分/扣分之间切换；输入框只填正数即可。</p>
               <p v-if="presetError" class="text-xs text-rose-300 mt-1.5">{{ presetError }}</p>
             </div>
           </div>
@@ -537,7 +547,13 @@ watch(presetAddOpen, async (open) => {
   }
 });
 const presetError = ref('');
-const newPreset = reactive({ label: '', delta: 5 });
+const newPreset = reactive({ label: '', delta: 5, sign: '+' });
+
+/** 切换新增预设的正负号（+ 加分 / - 扣分），delta 始终为正数，提交时套用符号。 */
+function togglePresetSign(): void {
+  newPreset.sign = newPreset.sign === '+' ? '-' : '+';
+  newPreset.delta = Math.abs(newPreset.delta);
+}
 
 // 经验表单
 const expAmount = ref('');
@@ -600,13 +616,15 @@ async function addPreset(): Promise<void> {
     return;
   }
   try {
+    const signedDelta = Math.abs(newPreset.delta) * (newPreset.sign === '-' ? -1 : 1);
     await api('/presets', {
       method: 'POST',
-      body: JSON.stringify({ label: newPreset.label.trim(), delta: newPreset.delta, reason: newPreset.label.trim() }),
+      body: JSON.stringify({ label: newPreset.label.trim(), delta: signedDelta, reason: newPreset.label.trim() }),
     });
-    toast('快捷预设已添加', 'success');
+    toast(`快捷预设已添加（${signedDelta > 0 ? '+' : ''}${signedDelta} 分）`, 'success');
     newPreset.label = '';
     newPreset.delta = 5;
+    newPreset.sign = '+';
     presetAddOpen.value = false;
     await loadPresets();
   } catch (e) {

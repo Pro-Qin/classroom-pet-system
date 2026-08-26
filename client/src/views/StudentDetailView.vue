@@ -241,7 +241,14 @@
         <div id="history-section" class="glass p-6 animate-fadeUp scroll-mt-20">
           <h3 class="font-bold text-indigo-50 flex items-center gap-2 mb-4">
             <History class="w-5 h-5 text-sky-300" /> 我的积分流水
-            <span class="ml-auto pill bg-white/10 text-indigo-200/80">共 {{ detail.history.length }} 条</span>
+            <span class="ml-auto flex items-center gap-1.5">
+              <button v-for="f in (['week','month','all'] as const)" :key="f" class="pill !px-2 !py-0.5 text-[10px] cursor-pointer transition-colors"
+                :class="historyFilter === f ? 'bg-indigo-400/25 text-indigo-100 border border-indigo-400/40' : 'bg-white/10 text-indigo-200/60 border border-white/10 hover:bg-white/20'"
+                @click="historyFilter = f">
+                {{ f === 'week' ? '本周' : f === 'month' ? '本月' : '全部' }}
+              </button>
+              <span class="pill bg-white/10 text-indigo-200/80">共 {{ filteredHistory.length }} 条</span>
+            </span>
           </h3>
             <div v-if="detail.trend && detail.trend.length" class="mb-4 h-20 flex items-end gap-[2px] overflow-hidden">
               <div
@@ -252,10 +259,10 @@
                 :title="p.day + ' ' + p.delta"
               />
             </div>
-          <div v-if="detail.history.length === 0" class="py-6 text-center text-indigo-200/50">暂无记录</div>
+          <div v-if="filteredHistory.length === 0" class="py-6 text-center text-indigo-200/50">{{ detail.history.length === 0 ? '暂无记录' : '该时间段暂无记录' }}</div>
           <ul v-else class="space-y-2 max-h-80 overflow-y-auto pr-1">
             <li
-              v-for="(h, i) in detail.history"
+              v-for="(h, i) in filteredHistory"
               :key="h.id"
               class="flex items-center gap-3 rounded-lg bg-white/4 border border-white/8 px-3.5 py-2.5"
             >
@@ -272,7 +279,7 @@
                   {{ fmtTime(h.created_at) }}
                 </p>
               </div>
-              <span class="w-12 text-right text-xs text-indigo-200/60">余额 {{ balanceOf(i) }}</span>
+              <span class="w-12 text-right text-xs text-indigo-200/60">余额 {{ balanceOf(h.id) }}</span>
             </li>
           </ul>
         </div>
@@ -443,6 +450,15 @@ const historyStats = computed(() => {
   return { count: h.length, gained, spent };
 });
 const backpackCount = computed(() => (detail.value?.backpack ?? []).reduce((s, b) => s + b.qty, 0));
+const historyFilter = ref<'week' | 'month' | 'all'>('all');
+const filteredHistory = computed(() => {
+  const h = detail.value?.history ?? [];
+  if (historyFilter.value === 'all') return h;
+  const now = new Date();
+  const start = new Date(now);
+  if (historyFilter.value === 'week') { start.setDate(now.getDate() - 7); } else { start.setMonth(now.getMonth() - 1); }
+  return h.filter((x) => new Date(x.created_at).getTime() >= start.getTime());
+});
 const previewEffect = computed<Record<string, number> | null>(() => {
   const b = previewItem.value;
   if (!b) return null;
@@ -468,9 +484,11 @@ async function confirmUse(b: Detail['backpack'][number]): Promise<void> {
   previewItem.value = null;
   await useItem(b.item_id);
 }
-function balanceOf(i: number): number {
+function balanceOf(id: string): number {
   const h = detail.value?.history ?? [];
   const base = detail.value?.student.points ?? 0;
+  const i = h.findIndex((x) => x.id === id);
+  if (i < 0) return base;
   let sum = 0;
   for (let k = 0; k <= i; k++) sum += h[k].delta;
   return base - sum;

@@ -101,6 +101,11 @@
                   <span v-if="backpackCount" class="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full bg-amber-400 text-amber-950 text-[11px] font-bold grid place-items-center">{{ backpackCount }}</span>
                 </button>
               </div>
+              <!-- 心情气泡：飘在宠物头顶，展示当前状态 + 互动小提示 -->
+              <div class="mood-bubble" :style="{ borderColor: pet.state.color + '66' }">
+                <span class="text-base">{{ pet.state.label }}</span>
+                <span class="mood-bubble-hint">{{ moodHint }}</span>
+              </div>
               <span class="pill mt-3 bg-white/10 text-indigo-200">
                 Lv.{{ pet.stage + 1 }} · {{ pet.stageLabel }}
               </span>
@@ -437,6 +442,27 @@ function petInteract(): void {
 
 const pet = computed(() => detail.value?.pet ?? null);
 
+/** 宠物心情气泡里的小提示（引导互动） */
+const moodHint = computed(() => {
+  const p = pet.value;
+  if (!p) return '';
+  // 依据当前状态给出引导
+  const hints: Record<string, string> = {
+    sick: '需要看病哦',
+    angry: '快哄哄它吧',
+    sleep: '嘘…在睡觉',
+    sleepy: '有点犯困',
+    tired: '累啦，休息下',
+    sad: '摸摸它',
+    hungry: '喂点吃的吧',
+    dirty: '该洗澡啦',
+    excited: '超兴奋！',
+    happy: '今天超开心',
+    normal: '一切正常',
+  };
+  return hints[p.state.key] ?? '';
+});
+
 const rank = computed(() => {
   if (!detail.value) return 0;
   const sorted = [...students.value].sort((a, b) => b.points - a.points);
@@ -665,3 +691,29 @@ onMounted(() => {
   checkUpdate();
 });
 </script>
+
+<style scoped>
+.mood-bubble {
+  margin-top: 0.75rem;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  border: 1.5px solid;
+  background: rgba(255,255,255,0.06);
+  color: var(--color-indigo-100, #e0e7ff);
+  font-weight: 600;
+  animation: moodFloat 2.4s ease-in-out infinite;
+}
+.mood-bubble-hint {
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: rgba(224,231,255,0.6);
+}
+@keyframes moodFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+</style>

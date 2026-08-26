@@ -135,32 +135,32 @@ if (process.env.NODE_ENV !== 'test') {
   const PORT = Number(process.env.PET_PORT) || Number(process.env.PORT) || 3000;
   const app = createApp();
   app.listen(PORT, () => {
-    console.log(`[pet-campus] server ready  http://localhost:${PORT}`);
-    console.log(`[pet-campus] version ${APP_VERSION}  (health: /api/health)`);
+    logger.info(`server ready  http://localhost:${PORT}`);
+    logger.info(`version ${APP_VERSION}  (health: /api/health)`);
 
     // 启动自检：数据库完整性 / 配置完整性 / 备份目录
     setTimeout(() => {
       try {
         const db = getDb();
         const ic = db.prepare('PRAGMA integrity_check').get() as { integrity_check: string };
-        console.log(`[selfcheck] 数据库完整性: ${ic.integrity_check}`);
+        logger.info(`selfcheck 数据库完整性: ${ic.integrity_check}`);
       } catch (e) {
-        console.error('[selfcheck] 数据库完整性检查失败:', e);
+        logger.error(`selfcheck 数据库完整性失败: ${(e as Error).message}`);
       }
       const cfg = loadConfig();
       if (cfg.supabaseUrl && !cfg.supabaseServiceKey) {
-        console.warn('[selfcheck] ⚠ Supabase 已配置项目地址但缺少 Service Role Key：只读可用，写入/同步不可用');
+        logger.warn('selfcheck ⚠ Supabase 已配置项目地址但缺少 Service Role Key：只读可用，写入/同步不可用');
       } else if (cfg.supabaseServiceKey && !cfg.supabaseUrl) {
-        console.warn('[selfcheck] ⚠ 已配置 Service Key 但缺少项目地址');
+        logger.warn('selfcheck ⚠ 已配置 Service Key 但缺少项目地址');
       }
-      if (!cfg.supabaseUrl) console.log('[selfcheck] 当前为本地模式（未配置云端）');
+      if (!cfg.supabaseUrl) logger.info('selfcheck 当前为本地模式（未配置云端）');
       try {
         fs.accessSync(BACKUP_DIR, fs.constants.W_OK);
-        console.log('[selfcheck] 备份目录可写 ✓');
+        logger.info('selfcheck 备份目录可写 ✓');
       } catch {
-        console.warn('[selfcheck] ⚠ 备份目录不可写，请检查权限');
+        logger.warn('selfcheck ⚠ 备份目录不可写，请检查权限');
       }
-      console.log('[selfcheck] 启动自检完成');
+      logger.info('selfcheck 启动自检完成');
     }, 400);
   });
 }

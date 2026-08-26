@@ -75,9 +75,9 @@ async function refreshSyncPill(): Promise<void> {
     if (s.mode !== 'supabase') {
       syncPill.mode = 'local';
       syncPill.visible = true;
-      syncPill.cls = 'bg-white/10 border border-white/15 text-indigo-200/70';
-      syncPill.text = '本地模式';
-      syncPill.title = '未配置云端同步，数据仅存本机';
+      syncPill.cls = 'bg-indigo-500/20 border border-indigo-400/40 text-indigo-100';
+      syncPill.text = '本地数据 · 未同步云端';
+      syncPill.title = '未配置云端同步：你正在查看的数据仅保存在本机，请放心使用';
       return;
     }
     syncPill.mode = 'supabase';

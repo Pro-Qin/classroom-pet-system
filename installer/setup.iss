@@ -154,6 +154,7 @@ end;
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务:"; Flags: unchecked
+Name: "autostart"; Description: "开机自动启动本程序（默认不选）"; GroupDescription: "附加任务:"; Flags: unchecked
 
 [Icons]
 ; Desktop shortcut -> whichever entry the user chose.  Only one fires.
@@ -162,6 +163,8 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppBat}"; Tasks: desktopico
 ; Start-menu shortcut -> the app name (default), always created.
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"
 Name: "{group}\卸载 {#AppName}"; Filename: "{uninstallexe}"
+; 开机自启（默认不选）：在用户启动文件夹建一个指向 start.exe 的快捷方式
+Name: "{userstartup}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; IconFilename: "{app}\app.ico"; Tasks: autostart
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "我现在就要启动 {#AppName} ~!"; Flags: nowait postinstall skipifsilent

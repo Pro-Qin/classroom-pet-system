@@ -297,8 +297,9 @@
 
       <!-- ===== 排行榜 ===== -->
       <div v-if="tab === 'rank'" class="space-y-6 animate-fadeUp">
-        <div class="flex justify-end">
+        <div class="flex justify-end gap-2">
           <button class="btn btn-ghost !py-1.5 text-xs" @click="exportRankCsv"><Download class="w-3.5 h-3.5" /> 导出榜单 CSV</button>
+          <button class="btn btn-ghost !py-1.5 text-xs" @click="exportPointsXlsx"><FileSpreadsheet class="w-3.5 h-3.5" /> 导出积分流水 Excel</button>
         </div>
         <!-- 领奖台：第2名左、第1名中、第3名右 -->
         <div class="grid grid-cols-3 gap-4 items-end max-w-3xl mx-auto">
@@ -455,7 +456,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { useRouter } from 'vue-router';
 import {
   GraduationCap, MonitorPlay, LogOut, Users, Coins, TrendingUp, PawPrint,
-  Plus, Zap, Send, History, Check, X, Store, Smile, Gauge, Download, Settings2, KeyRound, Save, RefreshCw, Gift, type LucideIcon,
+  Plus, Zap, Send, History, Check, X, Store, Smile, Gauge, Download, Settings2, KeyRound, Save, RefreshCw, Gift, FileSpreadsheet, type LucideIcon,
 } from 'lucide-vue-next';
 import ItemsManager from '../components/ItemsManager.vue';
 import RulesManager from '../components/RulesManager.vue';
@@ -808,6 +809,26 @@ function exportRankCsv(): void {
   a.download = 'ranking-' + new Date().toISOString().slice(0, 10) + '.csv';
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/** 导出全班积分流水为 Excel (.xlsx) */
+async function exportPointsXlsx(): Promise<void> {
+  try {
+    const token = localStorage.getItem('pet_token');
+    const res = await fetch('/api/teacher/points/xlsx', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error('导出失败');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'points-' + new Date().toISOString().slice(0, 10) + '.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    toast((e as Error).message, 'error');
+  }
 }
 
 function onDocClick(): void {

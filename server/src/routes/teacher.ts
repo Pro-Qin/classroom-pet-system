@@ -6,6 +6,7 @@ import { addPetExp, getSpecies, getExpThresholds, DEFAULT_EXP_THRESHOLDS, stageI
 import { setSetting, getSetting } from '../db/settings.js';
 import { requireRole, type Session } from '../middleware.js';
 import { getActiveSubject, subjectFeatureEnabled } from '../services/subjects.js';
+import * as XLSX from 'xlsx';
 
 export function registerTeacherRoutes(app: express.Express, auth: RequestHandler): void {
   const teacherOnly = requireRole(['teacher', 'admin']);
@@ -102,6 +103,38 @@ export function registerTeacherRoutes(app: express.Express, auth: RequestHandler
       return;
     }
     res.json({ history: getPointHistory(getDb(), sid, 200) });
+  });
+
+  // 导出全班积分流水为 Excel (.xlsx)
+  app.get('/api/teacher/points/xlsx', auth, (req, res) => {
+    try {
+      const rows = getDb().prepare(`
+        SELECT pe.delta, pe.reason, pe.operator, pe.created_at,
+               s.name AS student_name, s.class_name, s.points AS current_points
+        FROM point_events pe
+        JOIN students s ON s.id = pe.student_id
+        WHERE pe.deleted_at IS NULL
+        ORDER BY pe.created_at DESC
+      `).all() as { delta: number; reason: string; operator: string; created_at: string; student_name: string; class_name: string; current_points: number }[];
+      const data = rows.map((r) => ({
+        学生: r.student_name,
+        班级: r.class_name,
+        变动: r.delta,
+        类型: r.operator === 'student' ? '商店消费' : r.operator === 'admin' ? '管理员' : '教师',
+        备注: r.reason || '',
+        时间: r.created_at,
+        当前积分: r.current_points,
+      }));
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '积分流水');
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="points-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+      res.send(Buffer.from(buf));
+    } catch (e) {
+      res.status(500).json({ error: '导出失败：' + (e as Error).message });
+    }
   });
 
   // 给宠物加经验（教师端也有）

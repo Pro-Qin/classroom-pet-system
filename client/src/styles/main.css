@@ -151,13 +151,15 @@ select option {
   .bottom-bar .btn { padding: 0.4rem 0.8rem; font-size: 0.85rem; }
 }
 
-/* ---- 标题栏水印 ---- */
+/* ---- 标题栏水印（等宽、非粗体） ---- */
 .watermark {
   position: fixed;
   top: 0.45rem;
   right: 1rem;
   z-index: 90;
   font-size: 0.7rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "JetBrains Mono", monospace;
+  font-weight: 400;
   letter-spacing: 0.12em;
   color: rgba(255, 255, 255, 0.5);
   pointer-events: none;

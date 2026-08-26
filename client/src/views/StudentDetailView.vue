@@ -132,8 +132,8 @@
               </label>
             </div>
             <div v-if="renameOpen" class="mt-3 flex gap-2">
-              <input v-model="newName" class="input !py-2 text-sm" placeholder="新名字" @keyup.enter="doRename" />
-              <button class="btn btn-primary !py-2" @click="doRename">确定</button>
+              <input v-model="newName" class="input !py-2 text-sm flex-1 min-w-0" placeholder="新名字" @keyup.enter="doRename" />
+              <button class="btn btn-primary !py-2 shrink-0 whitespace-nowrap" @click="doRename">确定</button>
             </div>
 
             <div class="mt-6 space-y-3">
@@ -255,10 +255,16 @@
               <span class="pill bg-white/10 text-indigo-200/80">共 {{ filteredHistory.length }} 条</span>
             </span>
           </h3>
-            <div v-if="trendChart" class="relative mb-4 h-40 rounded-xl bg-gradient-to-b from-indigo-500/10 via-transparent to-fuchsia-500/10 border border-white/10 overflow-hidden">
-              <!-- 背景标刻线：正负各一条基准 + 中线 -->
+          <div v-if="trendChart" class="mb-4">
+            <!-- 顶部日期标注（月/日），挤不开则隔几个显示 -->
+            <div class="flex gap-[2px] px-1 pr-10 mb-1">
+              <div v-for="(p, idx) in trendChart.bars" :key="'d'+p.day" class="flex-1 min-w-0 text-center">
+                <span v-if="showDayLabel(idx)" class="text-[9px] leading-none text-indigo-200/60">{{ dayLabel(p.day) }}</span>
+              </div>
+            </div>
+            <!-- 柱状图主体 -->
+            <div class="relative h-40 rounded-xl bg-gradient-to-b from-indigo-500/10 via-transparent to-fuchsia-500/10 border border-white/10 overflow-hidden">
               <div class="absolute inset-x-0 top-1/2 h-px bg-white/30" />
-              <!-- 右侧纵向标刻线（正/负范围可不同，0 线恒居中） -->
               <div class="absolute right-1 inset-y-0 w-8 pointer-events-none">
                 <div v-for="gs in tickMarks(trendChart.posMax, trendChart.posStep, true)" :key="'up' + gs" class="absolute right-0 flex items-center gap-1"
                   :style="{ top: (50 - (gs / trendChart.posMax) * 50) + '%' }">
@@ -269,19 +275,22 @@
                   <span class="h-px bg-sky-300/60 w-3" /><span class="text-[9px] text-sky-200/70 leading-none">-{{ gs }}</span>
                 </div>
               </div>
-              <!-- 柱子：正向上、负向下、0 不显示 -->
-              <div class="absolute inset-y-0 left-1 right-10 flex items-end gap-[2px]">
-                <template v-for="p in trendChart.bars" :key="p.day">
-                  <div v-if="p.delta !== 0" class="relative flex-1 min-w-[3px] h-full" :title="p.day + ' ' + p.delta">
-                    <div v-if="p.delta > 0" class="absolute bottom-1/2 left-0 right-0 rounded-t bg-fuchsia-400/80"
-                      :style="{ height: p.upPct + '%' }" />
-                    <div v-if="p.delta < 0" class="absolute top-1/2 left-0 right-0 rounded-b bg-sky-400/80"
-                      :style="{ height: p.downPct + '%' }" />
-                  </div>
-                </template>
+              <!-- 柱子：始终以 flex-1 占位（0 值=不可见铺垫），只画出非零的柱 -->
+              <div class="absolute inset-y-0 left-1 right-10 flex items-stretch gap-[2px]">
+                <div v-for="p in trendChart.bars" :key="p.day" class="relative flex-1 min-w-[3px]" :title="p.day + ' ' + p.delta">
+                  <div v-if="p.delta > 0" class="absolute bottom-1/2 left-0 right-0 rounded-t bg-fuchsia-400/80" :style="{ height: p.upPct + '%' }" />
+                  <div v-if="p.delta < 0" class="absolute top-1/2 left-0 right-0 rounded-b bg-sky-400/80" :style="{ height: p.downPct + '%' }" />
+                </div>
               </div>
               <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] text-indigo-200/50 pointer-events-none">0</div>
             </div>
+            <!-- 底部数值标注（挤不开会变小） -->
+            <div class="flex gap-[2px] px-1 pr-10 mt-1">
+              <div v-for="(p, idx) in trendChart.bars" :key="'v'+p.day" class="flex-1 min-w-0 text-center">
+                <span v-if="p.delta !== 0 && showValueLabel(idx)" class="text-[8px] leading-none" :class="p.delta > 0 ? 'text-fuchsia-200/70' : 'text-sky-200/70'">{{ p.delta > 0 ? '+' + p.delta : p.delta }}</span>
+              </div>
+            </div>
+          </div>
           <div v-if="filteredHistory.length === 0" class="py-6 text-center text-indigo-200/50">{{ detail.history.length === 0 ? '暂无记录' : '该时间段暂无记录' }}</div>
           <ul v-else class="space-y-2 max-h-80 overflow-y-auto pr-1">
             <li
@@ -536,6 +545,20 @@ function tickMarks(max: number, step: number, _up: boolean): number[] {
   const out: number[] = [];
   for (let v = step; v <= max + 1e-9; v += step) out.push(Math.round(v * 100) / 100);
   return out;
+}
+/** 把 'YYYY-MM-DD' 转成 'M/D' 短日期标注。 */
+function dayLabel(day: string): string {
+  const m = day.match(/^\d{4}-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  return `${Number(m[1])}/${Number(m[2])}`;
+}
+/** 日期标注稀疏显示（约每 4 格一个），避免挤满。 */
+function showDayLabel(idx: number): boolean {
+  return idx % 4 === 0 || idx === 0;
+}
+/** 数值标注稀疏显示（约每 3 格一个非零值），避免挤满。 */
+function showValueLabel(idx: number): boolean {
+  return idx % 3 === 0;
 }
 const previewEffect = computed<Record<string, number> | null>(() => {
   const b = previewItem.value;

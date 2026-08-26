@@ -146,7 +146,7 @@ onMounted(() => {
   refreshSyncPill();
   syncTimer = setInterval(refreshSyncPill, 60_000);
   // 心跳：配合 start.exe 的"浏览器关闭→后端自动结束"。
-  // 每 3s 上报；连续 2 次失败（约 6s）即判定服务端停止，弹出全屏遮罩（快速且不易误报）。
+  // 每 1s 上报；连续 2 次失败即判定服务端停止，弹出全屏遮罩；心跳恢复后自动清除遮罩。
   heartbeatTimer = setInterval(() => {
     fetch('/api/heartbeat', { method: 'POST' })
       .then((r) => {
@@ -157,7 +157,7 @@ onMounted(() => {
       .finally(() => {
         if (hbFail >= 2) serverDown.value = true;
       });
-  }, 3000);
+  }, 1000);
 });
 onUnmounted(() => {
   if (syncTimer) clearInterval(syncTimer);

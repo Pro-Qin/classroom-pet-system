@@ -52,8 +52,8 @@
                 class="w-28 h-28 mx-auto rounded-full grid place-items-center text-6xl shadow-glow animate-float"
                 :style="{ background: `linear-gradient(135deg, ${p.speciesColorFrom}, ${p.speciesColorTo})` }"
               >
-                <img v-if="p.avatarPath" :src="p.avatarPath" class="w-full h-full rounded-full object-cover" alt="" />
-                <span v-else>{{ p.petEmoji }}</span>
+              <img v-if="p.avatarPath && !avatarFailed.has(p.id)" :src="p.avatarPath" class="w-full h-full rounded-full object-cover" alt="" @error="avatarFailed.add(p.id)" />
+              <span v-else>{{ p.petEmoji }}</span>
               </div>
               <p class="mt-3 font-semibold text-indigo-50 text-lg">{{ p.petName }}</p>
               <p class="text-sm text-indigo-200/70">{{ p.name }}</p>
@@ -81,7 +81,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { LogOut, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import { api } from '../api';
 import { useSettings } from '../composables/settings';
@@ -102,6 +102,7 @@ const views = ['rank', 'pets'];
 const board = ref<RankRow[]>([]);
 const petWall = ref<PetWallItem[]>([]);
 const nowText = ref('');
+const avatarFailed = reactive(new Set<string>());
 
 const podium = computed(() => board.value.filter((r) => r.rank <= 3));
 const podiumColor = (rank: number): string => (rank === 1 ? '#fbbf24' : rank === 2 ? '#94a3b8' : '#fb923c');

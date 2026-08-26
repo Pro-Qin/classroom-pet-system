@@ -101,6 +101,9 @@
           <Loader2 v-if="loggingIn" class="w-4 h-4 animate-spin" />
           进入{{ tab === 'teacher' ? '教师系统' : '管理系统' }}
         </button>
+        <div class="mt-3 text-center">
+          <router-link to="/settings" class="text-xs text-indigo-200/50 hover:text-indigo-100 underline underline-offset-2">本机设置（仅存本机，不会同步）</router-link>
+        </div>
       </div>
     </main>
   </div>

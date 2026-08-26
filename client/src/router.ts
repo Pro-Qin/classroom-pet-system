@@ -6,6 +6,7 @@ import StudentDetailView from './views/StudentDetailView.vue';
 import TeacherView from './views/TeacherView.vue';
 import AdminView from './views/AdminView.vue';
 import ScreenView from './views/ScreenView.vue';
+import SettingsView from './views/SettingsView.vue';
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -19,5 +20,6 @@ export const router = createRouter({
     { path: '/teacher', component: TeacherView },
     { path: '/admin', component: AdminView },
     { path: '/screen', component: ScreenView },
+    { path: '/settings', component: SettingsView },
   ],
 });

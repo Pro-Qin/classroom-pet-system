@@ -83,6 +83,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { LogOut } from 'lucide-vue-next';
 import { api } from '../api';
 import { useSettings } from '../composables/settings';
+import { getLocalSetting } from '../composables/useLocalSettings';
 
 interface RankRow { id: string; name: string; class_name: string; points: number; rank: number; petName: string | null; petEmoji: string; petExp: number; petStage: number | null; petStageLabel: string | null; }
 interface StudentCard { id: string; name: string; class_name: string; petId: string | null; petName: string | null; petEmoji: string | null; speciesColorFrom: string; speciesColorTo: string; }
@@ -178,10 +179,13 @@ onMounted(() => {
   load();
   tick();
   clock = setInterval(tick, 1000);
-  timer = setInterval(() => {
-    view.value = view.value === 'rank' ? 'pets' : 'rank';
-    if (view.value === 'pets') load();
-  }, 10000);
+  const intervalSec = Math.max(0, Number(getLocalSetting('kioskInterval', 10)));
+  if (intervalSec > 0) {
+    timer = setInterval(() => {
+      view.value = view.value === 'rank' ? 'pets' : 'rank';
+      if (view.value === 'pets') load();
+    }, intervalSec * 1000);
+  }
 });
 
 onUnmounted(() => {

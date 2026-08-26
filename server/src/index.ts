@@ -85,15 +85,17 @@ export function createApp(): express.Express {
 
   // 浏览器心跳：前端 App 周期性调用；配合 start.exe 的"浏览器关闭→后端自动结束"。
   // 仅当由启动器拉起（PET_PORT 存在）且已收到过一次心跳后才启用自动停止。
+  // 失联超时默认 120s（管理端可改 config.heartbeatTimeoutSec）。
   if (process.env.PET_PORT) {
     app.post('/api/heartbeat', (_req, res) => {
       lastHeartbeatAt = Date.now();
       if (!heartbeatStarted) {
         heartbeatStarted = true;
-        // 首次心跳后启动"失联检测"：超过阈值（默认 30s）无心跳则结束服务。
         if (!heartbeatTimer) {
           heartbeatTimer = setInterval(() => {
-            if (heartbeatStarted && Date.now() - lastHeartbeatAt > HEARTBEAT_TIMEOUT_MS) {
+            if (!heartbeatStarted) return;
+            const timeoutMs = (loadConfig().heartbeatTimeoutSec || 120) * 1000;
+            if (Date.now() - lastHeartbeatAt > timeoutMs) {
               console.log('[heartbeat] 长时间未收到浏览器心跳，服务自动停止。');
               process.exit(0);
             }

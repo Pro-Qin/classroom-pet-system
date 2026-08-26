@@ -33,6 +33,8 @@ export interface AppConfig {
   skipUpdateCheckDevice: boolean;
   /** 界面文案风格（正式/俏皮），分欢迎/学生/管理三区。默认全正式。 */
   uiStyle: UiStyleConfig;
+  /** 后台进程失联心跳超时（秒）：默认 120（2 分钟），管理端可改。 */
+  heartbeatTimeoutSec: number;
 }
 
 /** 单界面风格：formal=正式（默认），playful=俏皮（颜文字萌系）。 */
@@ -66,6 +68,7 @@ const DEFAULTS: AppConfig = {
   tokenSecret: '',
   skipUpdateCheckDevice: false,
   uiStyle: DEFAULT_UI_STYLE,
+  heartbeatTimeoutSec: 120,
 };
 
 /** 解析某一界面最终生效的风格（formal / playful）。 */

@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import { getDb, newId, nowIso } from '../db/connection.js';
 import { setSetting, getSetting } from '../db/settings.js';
-import { updateConfig, UPLOAD_DIR, BACKUP_DIR, DEFAULT_GITEE_REPO, APP_VERSION } from '../config.js';
+import { loadConfig, updateConfig, UPLOAD_DIR, BACKUP_DIR, DEFAULT_GITEE_REPO, APP_VERSION } from '../config.js';
 import { requireRole, verifyToken, TEACHER_PASSWORD } from '../middleware.js';
 import { adoptPet, getExpThresholds, setPetAvatar, type PetRow } from '../services/pets.js';
 import { isValidSupabaseUrl } from './sync.js';
@@ -586,16 +586,17 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
       emergencyPwEnabled: getSetting('emergency_pw_enabled') !== '0',
       termName: getSetting('term_name') ?? '默认学期',
         cloudBackupRetention: Number(getSetting('cloud_backup_retention')) || 10,
+        heartbeatTimeoutSec: loadConfig().heartbeatTimeoutSec || 120,
         teacherPassword: session?.role === 'admin' ? (getSetting('teacher_password') ?? TEACHER_PASSWORD) : undefined,
         activeSubject: getSetting('active_subject') ?? '',
         subjects: (() => { try { return JSON.parse(getSetting('subjects_config') ?? '[]'); } catch { return []; } })(),
     });
   });
   app.put('/api/admin/settings', auth, adminOnly, (req, res) => {
-      const { pointsUnit, adminName, backupMaxBytes, emergencyPwEnabled, termName, teacherPassword, activeSubject, subjects, cloudBackupRetention } = (req.body ?? {}) as {
+      const { pointsUnit, adminName, backupMaxBytes, emergencyPwEnabled, termName, teacherPassword, activeSubject, subjects, cloudBackupRetention, heartbeatTimeoutSec } = (req.body ?? {}) as {
       pointsUnit?: string; adminName?: string; backupMaxBytes?: number; giteeEnabled?: boolean; giteeRepo?: string;
       emergencyPwEnabled?: boolean; termName?: string;
-      teacherPassword?: string; activeSubject?: string; subjects?: unknown; cloudBackupRetention?: number;
+      teacherPassword?: string; activeSubject?: string; subjects?: unknown; cloudBackupRetention?: number; heartbeatTimeoutSec?: number;
     };
     if (pointsUnit !== undefined) setSetting('points_unit', String(pointsUnit).trim() || '积分');
     if (adminName !== undefined) setSetting('admin_name', String(adminName).trim() || '管理员');
@@ -618,6 +619,11 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
       if (backupMaxBytes !== undefined) {
       const mb = Math.max(1, Math.min(1024 * 1024, Math.round(Number(backupMaxBytes) || 1024)));
       setSetting('backup_max_bytes', String(mb * 1024 * 1024));
+    }
+    // 后台进程失联超时（秒，默认 120）
+    if (heartbeatTimeoutSec !== undefined) {
+      const s = Math.max(30, Math.min(3600, Math.round(Number(heartbeatTimeoutSec) || 120)));
+      updateConfig({ heartbeatTimeoutSec: s });
     }
     // Gitee 更新源为锁定默认值，不接受修改（防被篡改指向恶意源）
     setSetting('gitee_enabled', '1');
@@ -668,4 +674,3 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
     res.json({ ok: true });
   });
 }
-import { loadConfig } from '../config.js';

@@ -193,6 +193,11 @@
             <input v-model.number="setForm.backupMaxMB" type="number" class="input !w-full" min="1" placeholder="1024" />
           </div>
           <div>
+            <label class="label">浏览器失联后自动停止（秒，默认 120 / 2 分钟）</label>
+            <input v-model.number="setForm.heartbeatTimeoutSec" type="number" class="input !w-full" min="30" max="3600" placeholder="120" />
+            <p class="text-xs text-indigo-200/50 mt-1">浏览器关闭/长时间无心跳超过该秒数，后端自动停止。</p>
+          </div>
+          <div>
             <label class="label">教师口令（管理员可查看/修改）</label>
             <div class="flex gap-2">
               <input v-model="setForm.teacherPassword" class="input !w-44" placeholder="123456" />
@@ -444,7 +449,7 @@ const spForm = reactive({ id: '', name: '', emoji: '', colorFrom: '', colorTo: '
 const speciesAvatarFile = ref<File | null>(null);
 const speciesAvatarPreview = ref('');
 const itemForm = reactive({ id: '', name: '', type: 'food', cost: 10, effectText: '{}', desc: '' });
-const setForm = reactive({ pointsUnit: '积分', adminName: '', giteeRepo: '', giteeEnabled: false, backupMaxMB: 1024, emergencyPwEnabled: true, termName: '默认学期', teacherPassword: '123456', activeSubject: '默认', cloudBackupRetention: 10, subjects: [{ name: '默认', sync: true, enabled: { points: true, pets: true, shop: true, rank: true, avatar: true } }], uiStyle: { welcome: 'global_formal' as string, student: 'formal' as string, admin: 'global_formal' as string } });
+const setForm = reactive({ pointsUnit: '积分', adminName: '', giteeRepo: '', giteeEnabled: false, backupMaxMB: 1024, emergencyPwEnabled: true, termName: '默认学期', teacherPassword: '123456', activeSubject: '默认', cloudBackupRetention: 10, heartbeatTimeoutSec: 120, subjects: [{ name: '默认', sync: true, enabled: { points: true, pets: true, shop: true, rank: true, avatar: true } }], uiStyle: { welcome: 'global_formal' as string, student: 'formal' as string, admin: 'global_formal' as string } });
 const auditLogs = ref<any[]>([]);
 const errorReports = ref<any[]>([]);
 const dataMsg = ref('');
@@ -485,6 +490,7 @@ async function loadAll(): Promise<void> {
   setForm.giteeEnabled = se.giteeEnabled;
   setForm.giteeRepo = se.giteeRepo;
   setForm.backupMaxMB = se.backupMaxMB || 1024;
+  setForm.heartbeatTimeoutSec = (se as { heartbeatTimeoutSec?: number }).heartbeatTimeoutSec || 120;
   setForm.emergencyPwEnabled = se.emergencyPwEnabled !== false;
   setForm.termName = se.termName || '默认学期';
   // 界面文案风格（当前生效规则）

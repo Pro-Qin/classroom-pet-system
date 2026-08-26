@@ -2,6 +2,33 @@ const BASE = '/api';
 
 export class ApiError extends Error {}
 
+let pushPending = false;
+let pushTimer: ReturnType<typeof setTimeout> | null = null;
+let pushInFlight = false;
+
+/** 每次数据操作后自动把本地变更推送到云端（fire-and-forget，去抖合并，避免 429 洪）。 */
+function scheduleSyncPush(): void {
+  if (pushInFlight) {
+    // 已经有推送在途：标记一个待推送，等本次完成后立即再推一次。
+    pushPending = true;
+    return;
+  }
+  if (pushTimer) return; // 已排定，等待去抖窗口
+  pushTimer = setTimeout(() => {
+    pushTimer = null;
+    pushInFlight = true;
+    fetch(BASE + '/sync/push', { method: 'POST' })
+      .catch(() => {})
+      .finally(() => {
+        pushInFlight = false;
+        if (pushPending) {
+          pushPending = false;
+          scheduleSyncPush();
+        }
+      });
+  }, 2000);
+}
+
 export async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -15,15 +42,11 @@ export async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     throw new ApiError((data as { error?: string }).error || `请求失败 (${res.status})`);
   }
-  // 每次数据操作后自动把本地变更推送到云端（fire-and-forget，不阻塞、不循环）
+  // 数据写操作后自动推送云端变更（去抖合并，不阻塞、不循环）
   if (!path.startsWith('/sync')) {
     const m = (opts.method ?? 'GET').toUpperCase();
     if (m === 'POST' || m === 'PUT' || m === 'DELETE' || m === 'PATCH') {
-      try {
-        fetch(BASE + '/sync/push', { method: 'POST' }).catch(() => {});
-      } catch {
-        /* ignore */
-      }
+      scheduleSyncPush();
     }
   }
   return data as T;

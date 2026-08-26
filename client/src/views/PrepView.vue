@@ -3,7 +3,8 @@
     <div class="glass w-full max-w-lg p-8 animate-fadeUp">
       <div class="flex items-center gap-3 mb-6">
         <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 grid place-items-center shadow-glow">
-          <Loader2 class="w-6 h-6 text-white animate-spin" />
+          <CheckCircle2 v-if="allDone" class="w-6 h-6 text-emerald-200" />
+          <Loader2 v-else class="w-6 h-6 text-white animate-spin" />
         </div>
         <div class="flex-1">
           <h1 class="text-xl font-bold text-indigo-50">
@@ -94,19 +95,29 @@
           <span>{{ updateInfo }}</span>
         </div>
         <p class="text-xs text-indigo-200/60 mt-1">
-          将下载并运行安装器（不删除已安装的依赖与数据，增量更新）。
+          将下载安装器（不删除已安装的依赖与数据，增量更新）。
         </p>
         <div class="mt-3 flex flex-wrap gap-2 items-center">
           <button class="btn btn-primary px-4 py-2 text-sm" :disabled="updating" @click="installUpdate">
             <Loader2 v-if="updating" class="w-4 h-4 animate-spin" />
             <Download v-else class="w-4 h-4" />
-            {{ updating ? '正在下载安装器… ' + downloadPct + '%' : '立即更新' }}
+            {{ updating ? '正在下载安装器… ' + downloadPct + '%' : '下载安装器' }}
           </button>
-          <span v-if="updateError" class="text-xs text-amber-300 self-center">{{ updateError }}</span>
+          <a
+            v-if="updateError && manualUrl"
+            :href="manualUrl"
+            target="_blank"
+            rel="noopener"
+            class="btn btn-ghost !py-2 text-xs"
+          >
+            <ExternalLink class="w-4 h-4" /> 下载失败，点这里手动下载
+          </a>
+          <span v-if="updateError && !manualUrl" class="text-xs text-amber-300 self-center">{{ updateError }}</span>
           <div v-if="updating" class="w-full max-w-xs h-2 rounded-full bg-white/10 overflow-hidden">
             <div class="h-full bg-indigo-400 transition-all duration-300" :style="{ width: downloadPct + '%' }" />
           </div>
         </div>
+        <span v-if="updateError && manualUrl" class="text-xs text-amber-300 self-center mt-1 block">{{ updateError }}</span>
       </div>
 
       <!-- 底部 -->
@@ -123,7 +134,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { Loader2, CheckCircle2, AlertTriangle, Circle, LogIn, WifiOff, Cloud, Download, ArrowDownToLine } from 'lucide-vue-next';
+import { Loader2, CheckCircle2, AlertTriangle, Circle, LogIn, WifiOff, Cloud, Download, ArrowDownToLine, ExternalLink } from 'lucide-vue-next';
 import { api } from '../api';
 import { pick, vibe } from '../composables/useCopyStyle';
 
@@ -161,6 +172,12 @@ const updating = ref(false);
 const updateError = ref('');
 const downloadPct = ref(0);
 const mode = ref('');
+const manualUrl = ref('');
+const latestVersion = ref('');
+const currentVersion = ref('');
+
+/** 三步骤全部完成 → 顶部 loading 换成对号 */
+const allDone = computed(() => checklist.value.length > 0 && checklist.value.every((i) => i.state === 'done'));
 
 /** 显示当前同步模式（离线/云端），接口为公开的准备阶段接口 */
 async function loadMode(): Promise<void> {
@@ -237,9 +254,18 @@ async function runPrep(): Promise<void> {
     setState('update', 'done', '已按设置跳过更新检查');
   } else {
     try {
-      const up = await api<{ currentVersion: string; latestVersion: string; hasUpdate: boolean; note: string }>('/updates/check');
-      updateInfo.value = up.hasUpdate ? `发现新版本 ${up.latestVersion}` : `当前版本 ${up.currentVersion}`;
+      const up = await api<{ currentVersion: string; latestVersion: string; hasUpdate: boolean; note: string; sources?: { assetUrl: string; reachable: boolean }[] }>('/updates/check');
+      currentVersion.value = up.currentVersion;
+      latestVersion.value = up.latestVersion;
       hasUpdate.value = up.hasUpdate;
+      if (up.hasUpdate) {
+        updateInfo.value = `已检测到更新版本 ${up.latestVersion}，当前版本 ${up.currentVersion}`;
+        // 记录一个可手动下载的链接（下载失败时兜底跳转）
+        const ok = (up.sources ?? []).find((s) => s.reachable && s.assetUrl);
+        manualUrl.value = ok?.assetUrl ?? '';
+      } else {
+        updateInfo.value = `当前版本 ${up.currentVersion}`;
+      }
       setState('update', 'done', updateInfo.value + (up.note ? `（${up.note}）` : ''));
     } catch (e) {
       setState('update', 'error', (e as Error).message);

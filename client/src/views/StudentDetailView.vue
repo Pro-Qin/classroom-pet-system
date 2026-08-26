@@ -255,14 +255,32 @@
               <span class="pill bg-white/10 text-indigo-200/80">共 {{ filteredHistory.length }} 条</span>
             </span>
           </h3>
-            <div v-if="detail.trend && detail.trend.length" class="mb-4 h-20 flex items-end gap-[2px] overflow-hidden">
-              <div
-                v-for="p in detail.trend"
-                :key="p.day"
-                class="flex-1 min-w-[3px] rounded-t bg-gradient-to-t from-sky-500/50 to-fuchsia-400/70"
-                :style="{ height: Math.max(3, (Math.abs(p.delta) / Math.max(1, ...detail.trend.map(x => Math.abs(x.delta)))) * 100) + '%' }"
-                :title="p.day + ' ' + p.delta"
-              />
+            <div v-if="trendChart" class="relative mb-4 h-40 rounded-xl bg-gradient-to-b from-indigo-500/10 via-transparent to-fuchsia-500/10 border border-white/10 overflow-hidden">
+              <!-- 背景标刻线：正负各一条基准 + 中线 -->
+              <div class="absolute inset-x-0 top-1/2 h-px bg-white/30" />
+              <!-- 右侧纵向标刻线（正/负范围可不同，0 线恒居中） -->
+              <div class="absolute right-1 inset-y-0 w-8 pointer-events-none">
+                <div v-for="gs in tickMarks(trendChart.posMax, trendChart.posStep, true)" :key="'up' + gs" class="absolute right-0 flex items-center gap-1"
+                  :style="{ top: (50 - (gs / trendChart.posMax) * 50) + '%' }">
+                  <span class="h-px bg-fuchsia-300/60 w-3" /><span class="text-[9px] text-fuchsia-200/70 leading-none">{{ gs }}</span>
+                </div>
+                <div v-for="gs in tickMarks(trendChart.negMax, trendChart.negStep, false)" :key="'dn' + gs" class="absolute right-0 flex items-center gap-1"
+                  :style="{ top: (50 + (gs / trendChart.negMax) * 50) + '%' }">
+                  <span class="h-px bg-sky-300/60 w-3" /><span class="text-[9px] text-sky-200/70 leading-none">-{{ gs }}</span>
+                </div>
+              </div>
+              <!-- 柱子：正向上、负向下、0 不显示 -->
+              <div class="absolute inset-y-0 left-1 right-10 flex items-end gap-[2px]">
+                <template v-for="p in trendChart.bars" :key="p.day">
+                  <div v-if="p.delta !== 0" class="relative flex-1 min-w-[3px] h-full" :title="p.day + ' ' + p.delta">
+                    <div v-if="p.delta > 0" class="absolute bottom-1/2 left-0 right-0 rounded-t bg-fuchsia-400/80"
+                      :style="{ height: p.upPct + '%' }" />
+                    <div v-if="p.delta < 0" class="absolute top-1/2 left-0 right-0 rounded-b bg-sky-400/80"
+                      :style="{ height: p.downPct + '%' }" />
+                  </div>
+                </template>
+              </div>
+              <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] text-indigo-200/50 pointer-events-none">0</div>
             </div>
           <div v-if="filteredHistory.length === 0" class="py-6 text-center text-indigo-200/50">{{ detail.history.length === 0 ? '暂无记录' : '该时间段暂无记录' }}</div>
           <ul v-else class="space-y-2 max-h-80 overflow-y-auto pr-1">
@@ -485,6 +503,40 @@ const filteredHistory = computed(() => {
   if (historyFilter.value === 'week') { start.setDate(now.getDate() - 7); } else { start.setMonth(now.getMonth() - 1); }
   return h.filter((x) => new Date(x.created_at).getTime() >= start.getTime());
 });
+/** 流水柱状图：正负对称、0 线居中、正/负分别占半高，右侧标刻线范围可不同 */
+const trendChart = computed(() => {
+  const items = detail.value?.trend ?? [];
+  if (!items.length) return null;
+  const pos = Math.max(...items.map((x) => Math.max(0, x.delta)), 1);
+  const neg = Math.max(...items.map((x) => Math.max(0, -x.delta)), 1);
+  // 选一个"好看"的刻度步长
+  const posStep = niceStep(pos);
+  const negStep = niceStep(neg);
+  const posMax = Math.ceil(pos / posStep) * posStep;
+  const negMax = Math.ceil(neg / negStep) * negStep;
+  const bars = items.map((p) => ({
+    day: p.day,
+    delta: p.delta,
+    upPct: p.delta > 0 ? (Math.abs(p.delta) / posMax) * 50 : 0,
+    downPct: p.delta < 0 ? (Math.abs(p.delta) / negMax) * 50 : 0,
+  }));
+  return { bars, posMax, negMax, posStep, negStep };
+});
+function niceStep(max: number): number {
+  if (max <= 0) return 1;
+  const target = max / 4;
+  const pow = Math.pow(10, Math.floor(Math.log10(target)));
+  const cands = [1, 2, 2.5, 5, 10];
+  for (const c of cands) { if (pow * c >= target) return pow * c; }
+  return pow * 10;
+}
+/** 生成刻度值数组（从一格到最大值），用于右侧标刻线。 */
+function tickMarks(max: number, step: number, _up: boolean): number[] {
+  if (max <= 0 || step <= 0) return [];
+  const out: number[] = [];
+  for (let v = step; v <= max + 1e-9; v += step) out.push(Math.round(v * 100) / 100);
+  return out;
+}
 const previewEffect = computed<Record<string, number> | null>(() => {
   const b = previewItem.value;
   if (!b) return null;

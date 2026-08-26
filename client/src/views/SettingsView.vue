@@ -20,9 +20,9 @@
         </div>
 
         <div>
-          <label class="label">浏览器失联后自动停止后端（秒，0 = 本次不自动停）</label>
-          <input v-model.number="heartbeatTimeoutSec" type="number" class="input !w-32" min="0" max="3600" placeholder="120" />
-          <p class="text-xs text-indigo-200/50 mt-1">浏览器关闭 / 长时间无心跳超过此秒数，后端自动停止（默认 120 = 2 分钟）。保存后立即对本次运行生效。</p>
+          <label class="label">浏览器失联后自动停止后端（秒）</label>
+          <input v-model.number="heartbeatTimeoutSec" type="number" class="input !w-32" min="30" max="240" placeholder="120" />
+          <p class="text-xs text-indigo-200/50 mt-1">允许范围 30-240；推荐 30-120。浏览器关闭 / 长时间无心跳超过此秒数，后端自动停止。</p>
         </div>
 
         <label class="flex items-start gap-2 cursor-pointer">
@@ -40,7 +40,7 @@
         </div>
 
         <button class="btn btn-primary w-full" @click="save">保存本机设置</button>
-        <button class="btn btn-ghost w-full" @click="onceOnly">仅本次运行不自动停止</button>
+        <button class="btn btn-ghost w-full" @click="applyOnce">仅本次生效</button>
         <p v-if="msg" class="text-xs text-center" :class="msgErr ? 'text-rose-300' : 'text-emerald-300'">{{ msg }}</p>
       </div>
     </div>
@@ -85,7 +85,7 @@ async function applyHeartbeat(sec: number): Promise<void> {
 }
 
 function save(): void {
-  const hb = Math.max(0, Math.min(3600, Math.round(Number(heartbeatTimeoutSec.value) || 120)));
+  const hb = Math.max(30, Math.min(240, Math.round(Number(heartbeatTimeoutSec.value) || 120)));
   saveLocalSettings({
     kioskInterval: Math.max(0, Math.round(Number(kioskInterval.value) || 0)),
     heartbeatTimeoutSec: hb,
@@ -98,12 +98,12 @@ function save(): void {
   msgErr.value = false;
 }
 
-/** 仅本次运行：后端不因浏览器关闭/心跳失联而自动停止。 */
-function onceOnly(): void {
-  heartbeatTimeoutSec.value = 0;
-  saveLocalSettings({ heartbeatTimeoutSec: 0 });
-  void applyHeartbeat(0);
-  msg.value = '已设置：本次运行不自动停止（不保存到下次）';
+/** 仅本次生效：把当前输入的失联超时应用到本次运行，不保存为持久默认。 */
+function applyOnce(): void {
+  const hb = Math.max(30, Math.min(240, Math.round(Number(heartbeatTimeoutSec.value) || 120)));
+  heartbeatTimeoutSec.value = hb;
+  void applyHeartbeat(hb);
+  msg.value = '已对本次运行生效（未写入默认值，下次仍按已保存值）';
   msgErr.value = false;
 }
 </script>

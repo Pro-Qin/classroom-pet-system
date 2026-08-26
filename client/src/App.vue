@@ -7,10 +7,9 @@
       </div>
       <h2 class="text-xl font-bold text-indigo-50">与后台服务断开连接</h2>
       <p class="mt-2 text-sm text-indigo-200/70 leading-relaxed">
-        服务可能已停止（例如浏览器关闭后自动结束）。<br />
-        请重新双击启动器 <b>start.exe</b> 来恢复服务。
+        服务可能已停止（例如浏览器关闭后自动结束）<br />
+        请重新双击启动器来恢复服务
       </p>
-      <button class="btn btn-primary mt-6 px-6" @click="reloadPage"><RefreshCw class="w-4 h-4" /> 重新连接</button>
     </div>
   </div>
 
@@ -47,7 +46,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { Loader2, Cloud, WifiOff, ServerOff, RefreshCw } from 'lucide-vue-next';
+import { Loader2, Cloud, WifiOff, ServerOff } from 'lucide-vue-next';
 import { api } from './api';
 import { toast } from './composables/toast';
 import ToastHost from './components/ToastHost.vue';
@@ -147,7 +146,7 @@ onMounted(() => {
   refreshSyncPill();
   syncTimer = setInterval(refreshSyncPill, 60_000);
   // 心跳：配合 start.exe 的"浏览器关闭→后端自动结束"。
-  // 页面打开期间周期上报；若连续多次失败，判定服务端已停止，弹出全屏遮罩提醒。
+  // 每 3s 上报；连续 2 次失败（约 6s）即判定服务端停止，弹出全屏遮罩（快速且不易误报）。
   heartbeatTimer = setInterval(() => {
     fetch('/api/heartbeat', { method: 'POST' })
       .then((r) => {
@@ -156,16 +155,12 @@ onMounted(() => {
       })
       .catch(() => { hbFail++; })
       .finally(() => {
-        if (hbFail >= 3) serverDown.value = true;
+        if (hbFail >= 2) serverDown.value = true;
       });
-  }, 5000);
+  }, 3000);
 });
 onUnmounted(() => {
   if (syncTimer) clearInterval(syncTimer);
   if (heartbeatTimer) clearInterval(heartbeatTimer);
 });
-
-function reloadPage(): void {
-  window.location.reload();
-}
 </script>

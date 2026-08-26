@@ -140,7 +140,13 @@
               <Users class="w-5 h-5 text-sky-300" /> 选择学生
               <span class="pill bg-indigo-500/25 text-indigo-200">{{ selected.size }} 人</span>
             </h3>
-            <input v-model="searchKey" class="input !w-48 !py-2 text-sm" placeholder="搜索姓名…" />
+            <input v-model="searchKey" class="input !w-44 !py-2 text-sm" placeholder="搜索姓名…" />
+            <select v-model="sortMode" class="input !w-36 !py-2 text-sm">
+              <option value="default">默认排序</option>
+              <option value="points">按积分降序</option>
+              <option value="name">按姓名</option>
+              <option value="class">按班级</option>
+            </select>
           </div>
           <p class="text-xs text-indigo-200/50 mb-2">点击学生卡片即可选中 / 取消选中（可多选）</p>
           <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 max-h-[400px] overflow-y-auto pr-1">
@@ -534,6 +540,7 @@ function closeGotoPop(): void {
 // 加减分表单
 const selected = reactive(new Set<string>());
 const searchKey = ref('');
+const sortMode = ref<'default' | 'points' | 'name' | 'class'>('default');
 const delta = ref(5);
 const reason = ref('');
 
@@ -574,9 +581,13 @@ const pointsValidation = computed<string | null>(() => {
   return null;
 });
 
-const filteredStudents = computed(() =>
-  students.value.filter((s) => !searchKey.value || s.name.includes(searchKey.value))
-);
+const filteredStudents = computed(() => {
+  const base = students.value.filter((s) => !searchKey.value || s.name.includes(searchKey.value));
+  if (sortMode.value === 'points') return [...base].sort((a, b) => b.points - a.points);
+  if (sortMode.value === 'name') return [...base].sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+  if (sortMode.value === 'class') return [...base].sort((a, b) => (a.class_name || '').localeCompare(b.class_name || '') || a.name.localeCompare(b.name, 'zh'));
+  return base;
+});
 const podiumOrdered = computed(() => {
   const byRank = (k: number) => board.value.find((r) => r.rank === k);
   return [byRank(2), byRank(1), byRank(3)].filter(Boolean) as RankRow[];

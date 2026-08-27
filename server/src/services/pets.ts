@@ -41,7 +41,14 @@ export const DEFAULT_EXP_THRESHOLDS = [...EXP_THRESHOLDS];
 /** 等级体系：数量 1~15 可调，名称与经验均可编辑 */
 export const MAX_LEVELS = 15;
 export const MIN_LEVELS = 1;
-export const DEFAULT_LEVEL_NAMES = ['蛋', '破壳', '幼年', '成长', '成熟', '进化', '传说'];
+export const DEFAULT_LEVEL_NAMES = [
+  '蛋', '破壳', '幼年', '成长', '成熟', '进化', '传说',
+  '传奇', '神话', '史诗', '闪耀', '王者', '星耀', '至尊', '巅峰',
+];
+/** 默认 15 级需求曲线（Lv.2=1000，每级 ×1.12 取整；总需求 32,369 ≈ 中游学生一年） */
+export const DEFAULT_LEVEL_THRESHOLDS = [
+  0, 1000, 1120, 1254, 1404, 1572, 1761, 1972, 2209, 2474, 2771, 3103, 3476, 3893, 4360,
+];
 
 export interface LevelConfig {
   names: string[];
@@ -78,8 +85,8 @@ export function getLevels(db?: SqliteDb): LevelConfig {
       if (ok) return { names: (names as string[]).map((n) => n.trim().slice(0, 12)), thresholds: t };
     }
   }
-  // 旧配置：只有阈值（沿用默认名称）
-  return { names: [...DEFAULT_LEVEL_NAMES], thresholds: getExpThresholds(d) };
+  // 未配置过 → 默认 15 级曲线（中游学生约一年满级）
+  return { names: [...DEFAULT_LEVEL_NAMES], thresholds: [...DEFAULT_LEVEL_THRESHOLDS] };
 }
 
 /** 校验并保存等级体系（名称/数量/经验三项一体） */
@@ -155,7 +162,7 @@ export function stageLabelOf(species: SpeciesRow | undefined, exp: number, thres
   if (species) {
     try {
       const labels = JSON.parse(species.stage_labels) as string[];
-      return labels[idx] ?? labels[0] ?? DEFAULT_LEVEL_NAMES[0];
+      return labels[idx] ?? DEFAULT_LEVEL_NAMES[idx] ?? labels[0] ?? '蛋';
     } catch {
       /* ignore */
     }
@@ -258,14 +265,6 @@ export function computeState(pet: Pick<PetRow, 'health' | 'hungry' | 'happy' | '
 
 const MIN_ATTR = 5;
 
-/** 宠物每日自然成长经验（按自然日累积，离线也补算；可在 settings 调整） */
-export const DEFAULT_PET_EXP_PER_DAY = 8;
-
-export function getPetExpPerDay(db?: SqliteDb): number {
-  const d = db ?? getDb();
-  const raw = Number(readSettingsJson(d, 'pet_exp_per_day'));
-  return Number.isFinite(raw) && raw >= 0 ? Math.min(200, Math.round(raw)) : DEFAULT_PET_EXP_PER_DAY;
-}
 
 /**
  * 宠物时间结算（惰性记账，无惩罚）：
@@ -281,35 +280,109 @@ export function tickPet(pet: PetRow, db?: SqliteDb): { changed: boolean; expGain
   if (elapsedH < 4) return { changed: false, expGain: 0 };
 
   const days = elapsedH / 24;
-  const expGain = Math.round(days * getPetExpPerDay(d));
-  const exp = Math.max(0, pet.exp + expGain);
+  // 惰性兜底结算也走排名权重（与后台批量结算同源，防两处口径不一）
+  let daily = RANK_EXP_BASE;
+  const stu = d
+    .prepare(`SELECT class_name FROM students WHERE id = ? AND deleted_at IS NULL`)
+    .get(pet.student_id) as { class_name: string } | undefined;
+  if (stu) {
+    const active = activeSubjectOf(d);
+    daily = computeClassDailyExp(d, stu.class_name ?? '', active).get(pet.student_id) ?? RANK_EXP_BASE;
+  }
+  const expGain = Math.round(days * daily * 10) / 10;
+  const exp = Math.max(0, (pet.exp ?? 0) + expGain);
 
   const ts = nowIso();
   d.prepare(`UPDATE pets SET exp=?, last_tick_at=?, updated_at=? WHERE id=?`).run(exp, ts, ts, pet.id);
   return { changed: true, expGain };
 }
 
+function activeSubjectOf(db: SqliteDb): string {
+  try {
+    const row = db.prepare(`SELECT value FROM settings WHERE key = 'active_subject'`).get() as
+      | { value: string }
+      | undefined;
+    return row?.value ?? '';
+  } catch {
+    return '';
+  }
+}
+
 /**
- * 后台批量结算：为全部宠物一次性补齐时间经验（调度器每小时调用）。
+ * 排名驱动的每日经验（按班级积分排名，同分同值）：
+ *   daily = 30 + 120 × (1 − 百分位)
+ * 头部 150/天（≈7 个月满级）、中游 90/天（≈一年满级，总需求 32,369）、末位 30/天（≈3 年）。
+ */
+export const RANK_EXP_BASE = 30;
+export const RANK_EXP_SPAN = 120;
+
+/** 计算某班级内按积分排名的每日经验表：返回 studentId -> daily */
+export function computeClassDailyExp(
+  db: SqliteDb,
+  className: string,
+  activeSubject: string
+): Map<string, number> {
+  const rows = db
+    .prepare(
+      `SELECT id, points FROM students
+       WHERE deleted_at IS NULL AND class_name = ? AND (subject = ? OR subject = '')
+       ORDER BY points DESC, id ASC`
+    )
+    .all(className, activeSubject) as { id: string; points: number }[];
+  const out = new Map<string, number>();
+  const n = rows.length;
+  if (n === 0) return out;
+  let prevPoints: number | null = null;
+  let prevDaily = 0;
+  for (let i = 0; i < n; i++) {
+    let daily: number;
+    if (prevPoints !== null && rows[i].points === prevPoints) {
+      daily = prevDaily; // 同分同值
+    } else {
+      const p = n > 1 ? i / (n - 1) : 0;
+      daily = Math.round((RANK_EXP_BASE + RANK_EXP_SPAN * (1 - p)) * 10) / 10;
+    }
+    out.set(rows[i].id, daily);
+    prevPoints = rows[i].points;
+    prevDaily = daily;
+  }
+  return out;
+}
+
+/**
+ * 后台批量结算（每小时）：按班级排名给全部宠物补齐时间经验。
  * 与 tickPet 共用 last_tick_at 记账位，先到先结算、后到自动空转，绝不重复计费。
  */
 export function settleAllPets(db?: SqliteDb): { settled: number; expTotal: number } {
   const d = db ?? getDb();
-  const perDay = getPetExpPerDay(d);
-  const rows = d
-    .prepare(`SELECT id, exp, last_tick_at FROM pets WHERE deleted_at IS NULL`)
-    .all() as { id: string; exp: number; last_tick_at: string }[];
+  const active = activeSubjectOf(d);
+  const classes = d
+    .prepare(
+      `SELECT DISTINCT class_name FROM students WHERE deleted_at IS NULL AND (subject = ? OR subject = '')`
+    )
+    .all(active) as { class_name: string }[];
+  const dailyByStudent = new Map<string, number>();
+  for (const c of classes) {
+    for (const [sid, daily] of computeClassDailyExp(d, c.class_name ?? '', active)) {
+      dailyByStudent.set(sid, daily);
+    }
+  }
+
+  const pets = d
+    .prepare(`SELECT id, student_id, exp, last_tick_at FROM pets WHERE deleted_at IS NULL`)
+    .all() as { id: string; student_id: string; exp: number; last_tick_at: string }[];
   let settled = 0;
   let expTotal = 0;
   const ts = nowIso();
   const stmt = d.prepare(`UPDATE pets SET exp=?, last_tick_at=?, updated_at=? WHERE id=?`);
-  for (const r of rows) {
+  for (const r of pets) {
     const last = new Date(r.last_tick_at).getTime();
     const hours = (Date.now() - last) / 3_600_000;
-    if (!Number.isFinite(hours) || hours < 4) continue; // 不足 4 小时跳过
-    const gain = Math.round((hours / 24) * perDay);
+    if (!Number.isFinite(hours) || hours < 4) continue;
+    const daily = dailyByStudent.get(r.student_id) ?? RANK_EXP_BASE;
+    const gain = Math.round((hours / 24) * daily * 10) / 10; // 保留 1 位小数
     if (gain <= 0) continue;
-    stmt.run(Math.max(0, r.exp + gain), ts, ts, r.id);
+    stmt.run(Math.max(0, (r.exp ?? 0) + gain), ts, ts, r.id);
     settled += 1;
     expTotal += gain;
   }

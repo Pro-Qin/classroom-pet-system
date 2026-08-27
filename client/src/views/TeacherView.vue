@@ -416,7 +416,7 @@
               <p class="text-sm font-semibold text-indigo-50 truncate">{{ s.name }}</p>
               <p class="text-xs text-indigo-200/60">
                 <template v-if="s.petId">
-                  宠物 {{ s.petName }} · <b class="text-fuchsia-300">Lv.{{ (s.petStage ?? 0) + 1 }} {{ s.petStageLabel }}</b> · 经验 {{ s.petExp }} / {{ s.petNextExp ?? '—' }}
+                  宠物 {{ s.petName }} · <b class="text-fuchsia-300">Lv.{{ (s.petStage ?? 0) + 1 }} {{ s.petStageLabel }}</b> · 经验 {{ fmtExp(s.petExp) }} / {{ s.petNextExp != null ? fmtExp(s.petNextExp) : '—' }}
                 </template>
                 <template v-else>未领养宠物</template>
               </p>
@@ -492,6 +492,7 @@ import PetsLevelManager from '../components/PetsLevelManager.vue';
 import { api, clearAuth } from '../api';
 import { toast } from '../composables/toast';
 import { pushUndoable } from '../composables/undo';
+import { fmtExp } from '../utils/format';
 import UndoButton from '../components/UndoButton.vue';
 import { useSettings } from '../composables/settings';
 import { useFrostHeader } from '../composables/useFrostHeader';
@@ -794,7 +795,7 @@ async function giveExp(s: Student): Promise<void> {
     if (afterStage > beforeStage && updated) {
       toast(`🎉 ${s.name} 的宠物升级啦！Lv.${afterStage + 1}「${updated.petStageLabel}」`, 'success');
     } else {
-      toast(`已给 ${s.name} 的宠物加 ${expAmount.value} 经验（当前 ${updated?.petExp ?? s.petExp}）`, 'success');
+      toast(`已给 ${s.name} 的宠物加 ${expAmount.value} 经验（当前 ${fmtExp(updated?.petExp ?? s.petExp)}）`, 'success');
     }
   } catch (e) {
     toast((e as Error).message, 'error');

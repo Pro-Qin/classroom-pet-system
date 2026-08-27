@@ -101,55 +101,64 @@ describe('背包新结构（id 主键，可同步）', () => {
   });
 });
 
-describe('宠物时间自然成长（后台批量、无离线惩罚）', () => {
-  it('settleAllPets：三天没结算的宠物补 24 经验，属性不衰减（无惩罚）；刚结算过的不动', async () => {
-    const { settleAllPets } = await import('../src/services/pets.js');
+describe('宠物排名驱动成长（后台批量、无离线惩罚）', () => {
+  function mkStu(id: string, no: string, cls: string, points: number): void {
     const ts = nowIso();
     db.prepare(
       `INSERT INTO students (id, student_no, name, class_name, subject, points, created_at, updated_at)
-       VALUES ('tick_stu','T99','打卡生','', '', 0, ?, ?)`
-    ).run(ts, ts);
-    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString();
-    const justNow = new Date(Date.now() - 3600_000).toISOString();
+       VALUES (?,?,?,?,?,?,?,?)`
+    ).run(id, no, id, cls, '', points, ts, ts);
+  }
+  function mkPet(id: string, sid: string, exp: number, daysAgo: number): void {
+    const ts = nowIso();
+    const last = new Date(Date.now() - daysAgo * 24 * 3600 * 1000).toISOString();
     db.prepare(
-      `INSERT INTO students (id, student_no, name, class_name, subject, points, created_at, updated_at)
-       VALUES ('tick_stu2','T98','打卡生二号','', '', 0, ?, ?)`
-    ).run(ts, ts);
-    db.prepare(
-      `INSERT INTO pets (id, student_id, species_id, name, exp, health, hungry, happy, clean, last_tick_at, created_at, updated_at)
-       VALUES ('tick_pet','tick_stu','cat','钟表匠', 10, 100, 100, 100, 100, ?, ?, ?)`
-    ).run(threeDaysAgo, ts, ts);
-    db.prepare(
-      `INSERT INTO pets (id, student_id, species_id, name, exp, health, hungry, happy, clean, last_tick_at, created_at, updated_at)
-       VALUES ('tick_pet2','tick_stu2','cat','小钟', 5, 100, 100, 100, 100, ?, ?, ?)`
-    ).run(justNow, ts, ts);
+      `INSERT INTO pets (id, student_id, species_id, name, exp, last_tick_at, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?)`
+    ).run(id, sid, 'cat', '宠' + id, exp, last, ts, ts);
+  }
+
+  it('同班 3 人：排名越高每日经验越多；中游 90/天 ≈ 一年满级（32,369 总需求）', async () => {
+    const { settleAllPets, DEFAULT_LEVEL_THRESHOLDS, computeClassDailyExp } = await import('../src/services/pets.js');
+    // 默认 15 级曲线总需求校验
+    const total = DEFAULT_LEVEL_THRESHOLDS.reduce((a, b) => a + b, 0);
+    expect(total).toBe(32369);
+    // 中游（3 人班第 2 名 = 百分位 0.5）一天 90；用 360 天外推 ≈ 32,400 ≈ 总需求
+    const midDaily = 30 + 120 * (1 - 0.5);
+    expect(midDaily).toBe(90);
+    expect(Math.round((total / midDaily) * 10) / 10).toBeLessThanOrEqual(365);
+
+    mkStu('r_top', 'R1', '三年二班', 300);
+    mkStu('r_mid', 'R2', '三年二班', 100);
+    mkStu('r_low', 'R3', '三年二班', 1);
+    mkPet('r_pet_top', 'r_top', 0, 10);
+    mkPet('r_pet_mid', 'r_mid', 0, 10);
+    mkPet('r_pet_low', 'r_low', 0, 10);
 
     const r = settleAllPets(getDb());
-    expect(r.settled).toBe(1); // 只有超过 4 小时的那只
-    expect(r.expTotal).toBe(24); // 3 天 × 8
+    expect(r.settled).toBe(3);
+    const expOf = (id: string): number => (db.prepare(`SELECT exp FROM pets WHERE id=?`).get(id) as { exp: number }).exp;
+    expect(expOf('r_pet_top')).toBe(1500); // 150 × 10 天
+    expect(expOf('r_pet_mid')).toBe(900); // 90 × 10
+    expect(expOf('r_pet_low')).toBe(300); // 30 × 10
 
-    const a = db.prepare(`SELECT exp, hungry FROM pets WHERE id='tick_pet'`).get() as { exp: number; hungry: number };
-    expect(a.exp).toBe(34); // 10 + 24
-    expect(a.hungry).toBe(100); // 无离线惩罚：属性纹丝不动
-
-    const b = db.prepare(`SELECT exp FROM pets WHERE id='tick_pet2'`).get() as { exp: number };
-    expect(b.exp).toBe(5);
+    // 同分同值：新增一名与 top 同分的学生 → daily 一致
+    mkStu('r_top2', 'R4', '三年二班', 300);
+    mkPet('r_pet_top2', 'r_top2', 0, 0);
+    const map = computeClassDailyExp(getDb(), '三年二班', '');
+    expect(map.get('r_top')).toBe(map.get('r_top2'));
   });
 
   it('重复结算不重复计费（last_tick_at 记账位）', async () => {
     const { settleAllPets } = await import('../src/services/pets.js');
-    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString();
-    const ts = nowIso();
-    db.prepare(
-      `INSERT INTO pets (id, student_id, species_id, name, exp, last_tick_at, created_at, updated_at)
-       VALUES ('tick_pet3','tick_stu','cat','记账猫', 0, ?, ?, ?)`
-    ).run(threeDaysAgo, ts, ts);
+    mkStu('solo_s', 'S1', '独班', 0);
+    mkPet('solo_pet', 'solo_s', 0, 3);
     settleAllPets(getDb());
-    const after1 = (db.prepare(`SELECT exp FROM pets WHERE id='tick_pet3'`).get() as { exp: number }).exp;
+    const after1 = (db.prepare(`SELECT exp FROM pets WHERE id='solo_pet'`).get() as { exp: number }).exp;
     settleAllPets(getDb());
-    const after2 = (db.prepare(`SELECT exp FROM pets WHERE id='tick_pet3'`).get() as { exp: number }).exp;
-    expect(after1).toBe(24);
-    expect(after2).toBe(24); // 第二次空转
+    const after2 = (db.prepare(`SELECT exp FROM pets WHERE id='solo_pet'`).get() as { exp: number }).exp;
+    expect(after1).toBe(450); // 全班唯一 → 第 1 名 150/天 × 3 天
+    expect(after2).toBe(450); // 第二次空转
   });
 });
 

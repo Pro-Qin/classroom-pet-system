@@ -173,6 +173,9 @@ alter table pets add column if not exists last_event_day text;
 -- 积分冲正引用列（v0.4.5）：指向被冲正的原流水
 alter table point_events add column if not exists ref_event_id text;
 
+-- 宠物经验允许小数（排名权重每日经验累积；v0.4.11）
+alter table pets alter column exp type double precision;
+
 -- RLS：默认关闭（本系统由服务端 service_role 写入，客户端不直连数据库）
 alter table students enable row level security;
 alter table species enable row level security;

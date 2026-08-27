@@ -112,7 +112,7 @@
               </span>
               <p class="mt-1 text-lg font-bold text-indigo-50">{{ pet.name }}</p>
               <p class="text-xs text-indigo-200/60">
-                经验 {{ pet.exp }} / 下一阶段 {{ nextExp }}
+                经验 {{ fmtExp(pet.exp) }} / 下一阶段 {{ fmtExp(nextExp) }}
               </p>
               <div class="mt-2 w-48 h-2 rounded-full bg-white/10 overflow-hidden">
                 <div
@@ -387,6 +387,7 @@ import {
 } from 'lucide-vue-next';
 import { api, upload } from '../api';
 import { toast } from '../composables/toast';
+import { fmtExp } from '../utils/format';
 import { pick, vibe } from '../composables/useCopyStyle';
 import { cropToCircleBlob } from '../utils/avatar';
 import { useSettings } from '../composables/settings';

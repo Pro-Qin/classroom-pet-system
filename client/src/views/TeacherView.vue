@@ -464,9 +464,11 @@
     </main>
 
     <!-- 底部操作栏（一体机大按钮） -->
-    <div class="bottom-bar">
-      <UndoButton />
-      <div class="flex-1" />
+    <div class="bottom-bar !justify-end">
+      <!-- 撤回：固定在底部栏正中 -->
+      <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+        <UndoButton @reverted="onReverted" />
+      </div>
       <button class="btn btn-ghost !text-base" @click="goScreen">
         <MonitorPlay class="w-5 h-5" /> 大屏
       </button>
@@ -735,6 +737,15 @@ function toggleSelectAll(): void {
   } else {
     for (const s of filteredStudents.value) selected.add(s.id);
   }
+}
+
+/** 撤回成功：用冲正返回的 delta 乐观回滚左侧积分，并刷新统计/榜单 */
+function onReverted(res: { reverted: { studentId: string; delta: number }[] }): void {
+  for (const rev of res.reverted ?? []) {
+    const stu = students.value.find((s) => s.id === rev.studentId);
+    if (stu) stu.points += rev.delta;
+  }
+  void Promise.all([loadStats(), loadBoard()]);
 }
 
 /** 新建预设的高亮 id（强调动画用） */

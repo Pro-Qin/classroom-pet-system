@@ -227,7 +227,8 @@ describe('/api/sync/run 与节流', () => {
   });
 
   it('同一 IP 连续两次 run 在窗口内被限流 429', async () => {
-    syncGuards.throttleMs = 300;
+    // 用远大于测试耗时的窗口保证确定性（默认 6s 在慢环境下可能被跑穿）
+    syncGuards.throttleMs = 60_000;
     const r1 = await call('POST', '/api/sync/run');
     expect(r1.status).toBe(200);
     const r2 = await call('POST', '/api/sync/run');

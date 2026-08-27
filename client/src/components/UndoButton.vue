@@ -33,14 +33,21 @@ const visible = computed(() => !!undoState.action);
 const expired = computed(() => !undoState.action || isUndoExpired());
 const buttonLabel = computed(() => (undoState.action ? `撤回：${undoState.action.label}` : '暂无可撤回的操作'));
 
+const emit = defineEmits<{ (e: 'reverted', result: RevertPayload): void }>();
+
+interface RevertPayload {
+  reverted: { originalEventId: string; revertEventId: string; studentId: string; delta: number }[];
+}
+
 async function onUndo(): Promise<void> {
   const a = undoState.action;
   if (!a || expired.value || busy.value) return;
   busy.value = true;
   try {
-    await api('/points/revert', { method: 'POST', body: JSON.stringify({ eventIds: a.eventIds }) });
+    const res = await api<RevertPayload>('/points/revert', { method: 'POST', body: JSON.stringify({ eventIds: a.eventIds }) });
     toast(`已撤回：${a.label}`, 'success');
     clearUndoable();
+    emit('reverted', res);
   } catch (e) {
     toast((e as Error).message || '撤回失败', 'error');
     clearUndoable(); // 已不可撤回（如已被冲正），灰掉避免反复报错

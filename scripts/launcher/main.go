@@ -619,20 +619,33 @@ func startServer(rt *nodeRuntime, dir string, port int) (<-chan struct{}, error)
 	return done, nil
 }
 
-// killStaleServer 杀掉上一次运行时记录到 pid 文件的服务进程（开机自检：清掉残留后台进程）。
+// killStaleServer 清掉残留后台服务进程：
+//  1) pid 文件记录的进程（上次正常运行的遗留）
+//  2) 幽灵 node 服务：命令行包含本 appDir 的 server/dist/index.js，
+//     但已不被任何 start.exe 实例持有（如升级前的旧版本服务、父进程崩溃后的孤儿）。
+//     不同版本的幽灵服务是"积分回滚/提示串台"等诡异问题的常见来源。
 func killStaleServer(dir string) {
 	pidFile := filepath.Join(dir, ".pet_server.pid")
-	raw, err := os.ReadFile(pidFile)
-	if err != nil {
+	if raw, err := os.ReadFile(pidFile); err == nil {
+		if pid := strings.TrimSpace(string(raw)); pid != "" {
+			_ = exec.Command("taskkill", "/PID", pid, "/F").Run()
+		}
+		_ = os.Remove(pidFile)
+	}
+	sweepGhostServers(dir)
+}
+
+// sweepGhostServers 用 PowerShell 按命令行匹配本目录下的 node 服务并结束。
+func sweepGhostServers(dir string) {
+	if runtime.GOOS != "windows" {
 		return
 	}
-	pid := strings.TrimSpace(string(raw))
-	if pid == "" {
-		return
-	}
-	// taskkill /PID x /F —— 只杀我们自己记录的服务进程。
-	_ = exec.Command("taskkill", "/PID", pid, "/F").Run()
-	_ = os.Remove(pidFile)
+	ps := `Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object {
+		$_.CommandLine -like '*server*dist*index.js*' -and $_.CommandLine -like ('*' + $env:PET_APPDIR_GHOST + '*')
+	} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", ps)
+	cmd.Env = append(os.Environ(), "PET_APPDIR_GHOST="+dir)
+	_ = cmd.Run()
 }
 
 func recordServerPid(dir string, pid int) {

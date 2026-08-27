@@ -681,11 +681,11 @@ async function buy(item: { id: string }): Promise<void> {
 
 async function buyAndUse(item: { id: string; name: string }): Promise<void> {
   try {
-    const r = await api<{ ok: boolean; cost: number }>('`/students/${studentId}/pet/buy-item`', {
+    const r = await api<{ ok: boolean; cost: number }>(`/students/${studentId}/pet/buy-item`, {
       method: 'POST',
       body: JSON.stringify({ itemId: item.id }),
     });
-    await api('`/students/${studentId}/pet/use-item`', {
+    await api(`/students/${studentId}/pet/use-item`, {
       method: 'POST',
       body: JSON.stringify({ itemId: item.id }),
     });

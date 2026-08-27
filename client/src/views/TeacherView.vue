@@ -227,8 +227,8 @@
             </div>
             <input v-model="reason" class="input !py-1.5 !text-sm mt-3" placeholder="加减分理由（必填）" @keyup.enter="applyPoints" />
             <p class="mt-1 text-xs text-indigo-200/50">
-              想把当前分值+理由存下来复用？
-              <button class="underline text-fuchsia-300 hover:text-fuchsia-200" @click="quickSavePreset">一键存为快捷理由！</button>
+              好麻烦？
+              <button class="underline text-fuchsia-300 hover:text-fuchsia-200" @click="gotoPresets">试试快捷理由！</button>
             </p>
             <p v-if="pointsValidation" class="mt-1 text-xs text-amber-300">{{ pointsValidation }}</p>
             <div class="flex gap-2 mt-3">
@@ -242,7 +242,7 @@
           </div>
 
           <!-- 快捷加减分 -->
-          <div class="glass p-5">
+          <div id="quick-preset-card" class="glass p-5">
             <h3 class="font-bold text-indigo-50 flex items-center gap-2 mb-1">
               <Zap class="w-5 h-5 text-yellow-300" /> 快捷加减分
             </h3>
@@ -720,10 +720,7 @@ async function applyPoints(): Promise<void> {
       localStorage.setItem('teacher_last_delta', String(delta.value));
       localStorage.setItem('teacher_last_reason', reason.value || '');
     } catch { /* ignore */ }
-    selected.clear();
-    reason.value = '';
-    delta.value = 5;
-    await Promise.all([loadStudents(), loadStats(), loadBoard()]);
+    selected.clear(); // 仅清空勾选；分值与理由保留，方便连发同样操作
   } catch (e) {
     toast((e as Error).message, 'error');
   }
@@ -751,6 +748,14 @@ function onReverted(res: { reverted: { studentId: string; delta: number }[] }): 
 
 /** 新建预设的高亮 id（强调动画用） */
 const presetHighlightId = ref('');
+
+/** 点击「试试快捷理由」：滚到快捷理由区并自动展开新增表单 */
+function gotoPresets(): void {
+  presetAddOpen.value = true;
+  requestAnimationFrame(() => {
+    document.getElementById('quick-preset-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+}
 
 /**
  * 一键把当前「分值 + 理由」存为快捷预设：

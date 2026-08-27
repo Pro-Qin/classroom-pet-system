@@ -32,34 +32,63 @@ function upgradeTeacherPasswordIfNeeded(stored: string): void {
 }
 
 /**
- * 登录防爆破：按 IP 记录失败。
+ * 登录防爆破（持久化到 settings 表，跨进程/重启不丢）：
  *  - 连续失败 ≥5 次 → 锁定 5 分钟
  *  - 锁定期内直接拒绝并提示剩余秒数；登录成功即清零
  */
 const LOCK_THRESHOLD = 5;
 const LOCK_MS = 5 * 60_000;
-const loginFails = new Map<string, { count: number; lockedUntil: number }>();
+const LOCK_KEY = 'login_locks';
+
+interface LockRec { count: number; lockedUntil: number }
+
+function readLocks(): Record<string, LockRec> {
+  try {
+    const row = getDb().prepare(`SELECT value FROM settings WHERE key = ?`).get(LOCK_KEY) as { value: string } | undefined;
+    if (!row) return {};
+    const parsed = JSON.parse(row.value) as Record<string, LockRec>;
+    const now = Date.now();
+    const out: Record<string, LockRec> = {};
+    for (const [ip, rec] of Object.entries(parsed)) {
+      // 清理已彻底过期的记录（锁定解除且计数窗口无意义）
+      if (rec.lockedUntil > now || now - rec.lockedUntil < LOCK_MS * 2) out[ip] = rec;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function writeLocks(locks: Record<string, LockRec>): void {
+  setSetting(LOCK_KEY, JSON.stringify(locks));
+}
 
 function lockRemainingSec(ip: string): number {
-  const rec = loginFails.get(ip);
+  const rec = readLocks()[ip];
   if (!rec) return 0;
   const left = rec.lockedUntil - Date.now();
   return left > 0 ? Math.ceil(left / 1000) : 0;
 }
 
 function recordLoginFail(ip: string): number {
-  const rec = loginFails.get(ip) ?? { count: 0, lockedUntil: 0 };
+  const locks = readLocks();
+  const rec = locks[ip] ?? { count: 0, lockedUntil: 0 };
   rec.count += 1;
   if (rec.count >= LOCK_THRESHOLD && Date.now() >= rec.lockedUntil) {
     rec.lockedUntil = Date.now() + LOCK_MS; // 达到阈值再次失败 → 触发/续期锁定
     rec.count = 0;
   }
-  loginFails.set(ip, rec);
+  locks[ip] = rec;
+  writeLocks(locks);
   return Math.max(0, LOCK_THRESHOLD - rec.count);
 }
 
 function clearLoginFails(ip: string): void {
-  loginFails.delete(ip);
+  const locks = readLocks();
+  if (locks[ip] !== undefined) {
+    delete locks[ip];
+    writeLocks(locks);
+  }
 }
 
 export function registerAuthRoutes(app: express.Express): void {
@@ -191,8 +220,8 @@ export function registerAuthRoutes(app: express.Express): void {
     const ok = (emergencyEnabled && usedEmergency) || bcrypt.compareSync(password ?? '', cfg.adminPasswordHash);
     if (!ok) {
       recordLoginFail(ip);
-      const rec = loginFails.get(ip);
-      const remainTries = rec && Date.now() < rec.lockedUntil ? 0 : Math.max(0, LOCK_THRESHOLD - (rec?.count ?? 0));
+      const recNow = readLocks()[ip];
+      const remainTries = recNow && Date.now() < recNow.lockedUntil ? 0 : Math.max(0, LOCK_THRESHOLD - (recNow?.count ?? 0));
       res.status(401).json({
         error: remainTries > 0 ? `管理员密码错误（还可尝试 ${remainTries} 次）` : '管理员密码错误，账号已临时锁定 5 分钟',
         remainingAttempts: remainTries,

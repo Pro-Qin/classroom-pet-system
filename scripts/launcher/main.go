@@ -86,7 +86,7 @@ func run() int {
 	// 1. Resolve Node.js: PATH → 随包便携版 → 自动下载便携版（真实进度条）
 	rt, err := resolveNodeRuntime(appDir)
 	if err != nil {
-		stepErr("未检测到 Node.js", "自动下载失败："+err.Error()+"。可手动安装 Node.js 18+：https://nodejs.org 后重试")
+		stepErr("未检测到 Node.js", "自动下载失败："+err.Error()+"。可手动安装 Node.js 22.5+：https://nodejs.org 后重试")
 		pause()
 		return 1
 	}
@@ -186,7 +186,7 @@ func stepErr(title string, hint string) {
 // ---------- Node.js 运行时解析与自动下载 ----------
 
 // nodeVersion 固定的便携版 Node LTS 版本（三镜像均同步此版本）
-const nodeVersion = "v20.19.4"
+const nodeVersion = "v22.18.0"
 const nodeArchive = nodeVersion + "/node-" + nodeVersion + "-win-x64.zip"
 
 // 下载源：国内优先（npmmirror → 华为云 → 官方）
@@ -232,27 +232,67 @@ func portableNodeOK(dir string) bool {
 	return fileExists(filepath.Join(dir, "node.exe")) && fileExists(filepath.Join(dir, "npm.cmd"))
 }
 
-// resolveNodeRuntime 依次尝试：全局 PATH → 已下载的便携版 → 自动下载便携版。
+// nodeMinParts 应用所需的最低 Node 版本：node:sqlite 内建模块要求 22.5+。
+var nodeMinParts = [3]int{22, 5, 0}
+
+// nodeVersionOK 检查 exe 的版本是否 >= 22.5.0（解析 "v22.18.0"）。
+func nodeVersionOK(exe string) bool {
+	out, err := exec.Command(exe, "-v").Output()
+	if err != nil {
+		return false
+	}
+	v := strings.TrimSpace(string(out))
+	v = strings.TrimPrefix(v, "v")
+	parts := strings.Split(v, ".")
+	if len(parts) < 3 {
+		return false
+	}
+	nums := [3]int{}
+	for i := 0; i < 3; i++ {
+		n := 0
+		for _, ch := range parts[i] {
+			if ch < '0' || ch > '9' {
+				break
+			}
+			n = n*10 + int(ch-'0')
+		}
+		nums[i] = n
+	}
+	for i := 0; i < 3; i++ {
+		if nums[i] != nodeMinParts[i] {
+			return nums[i] > nodeMinParts[i]
+		}
+	}
+	return true
+}
+
+// resolveNodeRuntime 依次尝试：全局 PATH（需 22.5+）→ 已下载的便携版 → 自动下载便携 v22。
+// 全局 node 存在但版本过旧时不打扰用户（不升级/不卸载），静默改用便携版。
 func resolveNodeRuntime(appDir string) (*nodeRuntime, error) {
-	if hasNode() {
+	if hasNode() && nodeVersionOK("node") {
 		return &nodeRuntime{nodeExe: "node", npmCmd: "npm"}, nil
 	}
 	portable := filepath.Join(appDir, "runtime", "node")
-	if portableNodeOK(portable) {
+	if portableNodeOK(portable) && nodeVersionOK(filepath.Join(portable, "node.exe")) {
 		fmt.Println("  ✓ 使用随包 Node.js 便携版（runtime\node）")
 		return portableRt(portable), nil
 	}
-	fmt.Println()
-	fmt.Println("  ▶ 未检测到 Node.js，正在自动下载便携版（约 30 MB，国内镜像优先）...")
+	if hasNode() {
+		out, _ := exec.Command("node", "-v").Output()
+		fmt.Println("  ⚠ 检测到 Node.js " + strings.TrimSpace(string(out)) + "，但本系统需要 22.5+；将使用自动下载的便携版（不影响已安装的 Node）")
+	} else {
+		fmt.Println()
+		fmt.Println("  ▶ 未检测到 Node.js，正在自动下载便携版（约 35 MB，国内镜像优先）...")
+	}
 	fmt.Println()
 	if err := downloadPortableNode(portable); err != nil {
 		return nil, err
 	}
-	if !portableNodeOK(portable) {
-		return nil, errors.New("下载解压后未找到 node.exe（可能磁盘已满或被杀软拦截）")
+	if !portableNodeOK(portable) || !nodeVersionOK(filepath.Join(portable, "node.exe")) {
+		return nil, errors.New("下载解压后未找到可用的 node.exe（可能磁盘已满或被杀软拦截）")
 	}
 	fmt.Println()
-	fmt.Println("  ✓ Node.js 便携版就绪：" + portable)
+	fmt.Println("  ✓ Node.js " + nodeVersion + " 便携版就绪：" + portable)
 	return portableRt(portable), nil
 }
 

@@ -16,7 +16,7 @@ echo.
 where node >nul 2>nul
 if errorlevel 1 (
     echo [ERROR] Node.js not found.
-    echo         Install Node.js 18+ from https://nodejs.org
+    echo         Install Node.js 22.5+ from https://nodejs.org
     echo.
     pause >nul
     exit /b 1

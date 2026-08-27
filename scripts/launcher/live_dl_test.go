@@ -23,6 +23,11 @@ func TestLiveDownloadPortableNode(t *testing.T) {
 		t.Fatalf("node -v: %v", err)
 	}
 	t.Logf("node -v = %s", string(out))
+	sqlite, err := exec.Command(filepath.Join(dest, "node.exe"), "-e", "require('node:sqlite'); console.log('sqlite-ok')").Output()
+	if err != nil {
+		t.Fatalf("node:sqlite unavailable: %v", err)
+	}
+	t.Logf("sqlite: %s", string(sqlite))
 	if !portableNodeOK(dest) {
 		t.Fatal("portable layout incomplete")
 	}

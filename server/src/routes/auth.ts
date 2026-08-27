@@ -50,8 +50,8 @@ function readLocks(): Record<string, LockRec> {
     const now = Date.now();
     const out: Record<string, LockRec> = {};
     for (const [ip, rec] of Object.entries(parsed)) {
-      // 清理已彻底过期的记录（锁定解除且计数窗口无意义）
-      if (rec.lockedUntil > now || now - rec.lockedUntil < LOCK_MS * 2) out[ip] = rec;
+      // 只清理"曾锁定且早已解除"的陈旧记录；未锁定（lockedUntil=0）的计数中记录必须保留
+      if (rec.lockedUntil === 0 || rec.lockedUntil > now - LOCK_MS * 2) out[ip] = rec;
     }
     return out;
   } catch {

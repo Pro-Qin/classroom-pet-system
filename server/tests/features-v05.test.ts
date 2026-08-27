@@ -101,6 +101,26 @@ describe('背包新结构（id 主键，可同步）', () => {
   });
 });
 
+describe('积分下限钳 0', () => {
+  it('扣分超过现有积分 → 钳到 0，流水记录实际生效值', () => {
+    const ts = nowIso();
+    db.prepare(
+      `INSERT INTO students (id, student_no, name, class_name, subject, points, created_at, updated_at)
+       VALUES ('floor_stu','F1','下限生','', '', 3, ?, ?)`
+    ).run(ts, ts);
+    const r = applyPoints(getDb(), ['floor_stu'], -10, '越界扣分', 'teacher');
+    expect(r.applied).toBe(1);
+    expect(r.events[0].delta).toBe(-3); // 实际只扣掉 3
+    const pts = (db.prepare(`SELECT points FROM students WHERE id='floor_stu'`).get() as { points: number }).points;
+    expect(pts).toBe(0);
+    // 冲正 +10 不会把 0 顶成 10（冲正遵守下限语义：回补实际扣掉的 3）
+    const rev = revertPointEvents(getDb(), [r.events[0].eventId]);
+    expect(rev.ok).toBe(true);
+    const after = (db.prepare(`SELECT points FROM students WHERE id='floor_stu'`).get() as { points: number }).points;
+    expect(after).toBe(3);
+  });
+});
+
 describe('宠物排名驱动成长（后台批量、无离线惩罚）', () => {
   function mkStu(id: string, no: string, cls: string, points: number): void {
     const ts = nowIso();

@@ -54,6 +54,16 @@ vi.mock('../src/config.js', async (importOriginal) => {
   } as typeof orig;
 });
 
+// 更新检查走真实外网（GitHub 镜像/Gitee 探测，8s 级超时）——
+// 在 CI/弱网下会偶发拖垮 5s 用例超时。测试里 mock 掉，专注路由逻辑。
+vi.mock('../src/services/updateSources.js', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../src/services/updateSources.js')>();
+  return {
+    ...orig,
+    checkAllSources: async () => ({ sources: [], highest: null }),
+  };
+});
+
 import { registerSyncRoutes, syncGuards } from '../src/routes/sync.js';
 import { requireAuth, signToken } from '../src/middleware.js';
 import { openMemoryDb, setDbForTest, closeDb, nowIso } from '../src/db/connection.js';

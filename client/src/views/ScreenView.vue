@@ -30,7 +30,7 @@
               </div>
               <p class="mt-4 text-3xl font-bold text-indigo-50">{{ p.name }}</p>
               <p v-if="p.petStageLabel" class="text-base text-fuchsia-300/90 mt-0.5">Lv.{{ (p.petStage ?? 0) + 1 }} {{ p.petStageLabel }}</p>
-              <p class="text-2xl text-amber-300 font-bold mt-1">{{ p.points }} {{ pointsUnit }}</p>
+              <p class="text-2xl text-amber-300 font-bold mt-1">{{ fmtInt(p.points) }} {{ pointsUnit }}</p>
             </div>
           </div>
           <div class="glass overflow-hidden">
@@ -45,7 +45,7 @@
                     <span v-else>{{ r.petEmoji }}</span>
                     <span>{{ r.petName ?? '' }}</span><span v-if="r.petStageLabel" class="ml-2 text-base text-fuchsia-300/80">Lv.{{ (r.petStage ?? 0) + 1 }}</span>
                   </td>
-                  <td class="px-6 py-4 text-right text-2xl font-bold text-amber-300">{{ r.points }}</td>
+                  <td class="px-6 py-4 text-right text-2xl font-bold text-amber-300">{{ fmtInt(r.points) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -93,6 +93,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { LogOut, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import { api } from '../api';
+import { fmtInt } from '../utils/format';
 import { useSettings } from '../composables/settings';
 import { getLocalSetting } from '../composables/useLocalSettings';
 

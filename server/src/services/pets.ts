@@ -433,11 +433,11 @@ export function useItem(db: SqliteDb, studentId: string, itemId: string): UseIte
 
   return tx(db, () => {
     const now = nowIso();
-    let exp = pet.exp;
+    let exp = Math.max(0, pet.exp ?? 0);
     const patch: Record<string, number> = {};
     for (const [k, v] of Object.entries(effect)) {
       if (k === 'exp') {
-        exp += v;
+        exp = Math.max(0, exp + v);
       } else if (['health', 'hungry', 'happy', 'clean'].includes(k)) {
         patch[k] = clamp((pet as unknown as Record<string, number>)[k] + v);
       }
@@ -517,11 +517,9 @@ export function addPetExp(db: SqliteDb, petId: string, amount: number, operator:
   if (!Number.isFinite(amount) || amount === 0) return null;
   return tx(db, () => {
     const now = nowIso();
-    db.prepare(`UPDATE pets SET exp = max(0, exp + ?), updated_at = ? WHERE id = ?`).run(
-      Math.round(amount),
-      now,
-      petId
-    );
+    // 支持小数经验（保留 1 位精度）；总经验钳制 >=0
+    const a = Math.round(amount * 10) / 10;
+    db.prepare(`UPDATE pets SET exp = max(0, exp + ?), updated_at = ? WHERE id = ?`).run(a, now, petId);
     return db.prepare(`SELECT * FROM pets WHERE id = ?`).get(petId) as unknown as PetRow;
   });
 }

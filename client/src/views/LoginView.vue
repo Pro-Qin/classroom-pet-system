@@ -76,7 +76,7 @@
             </div>
             <div class="min-w-0">
               <p class="font-semibold text-indigo-50 truncate">{{ s.name }}</p>
-              <p class="text-xs text-indigo-200/60 truncate"><Star class="w-3 h-3 inline -mt-0.5 text-amber-300" /> {{ s.points }} {{ pointsUnit }}</p>
+              <p class="text-xs text-indigo-200/60 truncate"><Star class="w-3 h-3 inline -mt-0.5 text-amber-300" /> {{ fmtInt(s.points) }} {{ pointsUnit }}</p>
             </div>
           </button>
         </div>
@@ -112,6 +112,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { fmtInt } from '../utils/format';
 import { PawPrint, Users, GraduationCap, ShieldCheck, ChevronRight, ChevronDown, Star, Loader2 } from 'lucide-vue-next';
 import { api, setAuth, clearAuth } from '../api';
 import { useSettings } from '../composables/settings';

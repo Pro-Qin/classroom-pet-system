@@ -26,6 +26,9 @@ export function applyPoints(
   if (!Number.isFinite(d) || d === 0) {
     throw new Error('分值必须为非零整数');
   }
+  if (!Number.isInteger(Number(delta)) || Math.abs(d) > 1_000_000_000) {
+    throw new Error('分值必须是 -10^9 ~ 10^9 范围内的整数');
+  }
   const ids = [...new Set(studentIds.filter(Boolean))];
   if (ids.length === 0) throw new Error('请至少选择一名学生');
 
@@ -34,25 +37,34 @@ export function applyPoints(
     const events: PointApplyResult['events'] = [];
     const skipped: string[] = [];
     for (const sid of ids) {
-      // 原子更新：points = points + d（并发加减分不丢更新）
-      const r = db
-        .prepare(`UPDATE students SET points = points + ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`)
-        .run(d, now, sid);
-      if (r.changes === 0) {
+      const before = (db.prepare(`SELECT points FROM students WHERE id = ? AND deleted_at IS NULL`).get(sid) as
+        | { points: number }
+        | undefined);
+      if (!before) {
         skipped.push(sid);
         continue;
       }
+      // 原子更新：下限钳 0（扣分不允许扣成负数）
+      db.prepare(
+        `UPDATE students SET points = MAX(0, points + ?), updated_at = ? WHERE id = ? AND deleted_at IS NULL`
+      ).run(d, now, sid);
       const newPoints = (db.prepare(`SELECT points FROM students WHERE id = ?`).get(sid) as { points: number }).points;
+      const effective = newPoints - before.points; // 实际生效值（可能被下限截断）
+      if (effective === 0) {
+        skipped.push(sid);
+        continue;
+      }
       const eventId = newId('ev');
       db.prepare(
         `INSERT INTO point_events (id, student_id, delta, reason, operator, created_at, updated_at) VALUES (?,?,?,?,?,?,?)`
-      ).run(eventId, sid, d, reason, operator, now, now);
-      events.push({ studentId: sid, delta: d, newPoints, eventId });
+      ).run(eventId, sid, effective, reason, operator, now, now);
+      events.push({ studentId: sid, delta: effective, newPoints, eventId });
     }
+    const totalDelta = events.reduce((sum, e) => sum + e.delta, 0);
     return {
       applied: events.length,
       skipped,
-      totalDelta: d * events.length,
+      totalDelta,
       events,
     };
   });
@@ -95,9 +107,9 @@ export function revertPointEvents(
         out.alreadyReverted.push(orig.id);
         continue;
       }
-      // 学生可能已被软删：冲正仍需落账，直接改 points（deleted 学生保留历史完整性）
+      // 冲正同样遵守下限钳 0
       const r = db
-        .prepare(`UPDATE students SET points = points - ?, updated_at = ? WHERE id = ?`)
+        .prepare(`UPDATE students SET points = MAX(0, points - ?), updated_at = ? WHERE id = ?`)
         .run(orig.delta, now, orig.student_id);
       if (r.changes === 0) {
         out.missing.push(orig.id);

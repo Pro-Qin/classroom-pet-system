@@ -69,6 +69,10 @@ export function registerTeacherRoutes(app: express.Express, auth: RequestHandler
       res.status(400).json({ error: '名称与分值必填' });
       return;
     }
+    if (!Number.isInteger(Number(delta))) {
+      res.status(400).json({ error: '分值必须是整数（不支持小数）' });
+      return;
+    }
     const now = nowIso();
     const id = newId('pre');
     db.prepare(

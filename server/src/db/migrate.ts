@@ -273,6 +273,13 @@ export function migrate(db?: SqliteDb): void {
   // 重建后兜底：确保所有行都有 id（异常中断的重建）
   d.exec(`UPDATE backpacks SET id = student_id || '|' || item_id WHERE id IS NULL`);
 
+  // 数据健康修复（幂等）：钳制历史异常数据（如误输入 1e119 的积分、负经验、负价格道具）
+  d.exec(`UPDATE students SET points = 1000000000 WHERE points > 1000000000`);
+  d.exec(`UPDATE students SET points = -1000000000 WHERE points < -1000000000`);
+  d.exec(`UPDATE pets SET exp = 0 WHERE exp < 0`);
+  d.exec(`UPDATE students SET points = 0 WHERE points < 0`);
+  d.exec(`UPDATE items SET cost = 0 WHERE cost < 0`);
+
   // 同步游标比较用的辅助索引（脏行查询免全表扫描）
   d.exec(`CREATE INDEX IF NOT EXISTS idx_students_updated ON students(updated_at)`);
   d.exec(`CREATE INDEX IF NOT EXISTS idx_pets_updated ON pets(updated_at)`);

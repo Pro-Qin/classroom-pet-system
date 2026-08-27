@@ -26,14 +26,14 @@
       <div class="glass p-4 flex items-center gap-3 animate-fadeUp">
         <Coins class="w-6 h-6 text-amber-300" />
         <div>
-          <p class="text-2xl font-bold text-indigo-50">{{ stats.total ?? '-' }}</p>
+          <p class="text-2xl font-bold text-indigo-50 break-all">{{ fmtInt(stats.total) }}</p>
           <p class="text-xs text-indigo-200/60">总{{ pointsUnit }}</p>
         </div>
       </div>
       <div class="glass p-4 flex items-center gap-3 animate-fadeUp">
         <TrendingUp class="w-6 h-6 text-emerald-300" />
         <div>
-          <p class="text-2xl font-bold text-indigo-50">{{ stats.avg ?? '-' }}</p>
+          <p class="text-2xl font-bold text-indigo-50 break-all">{{ fmtInt(stats.avg) }}</p>
           <p class="text-xs text-indigo-200/60">平均{{ pointsUnit }}</p>
         </div>
       </div>
@@ -183,7 +183,7 @@
               </span>
               <div class="min-w-0">
                 <p class="text-sm font-semibold text-indigo-50 truncate">{{ s.name }}</p>
-                <p class="text-xs text-indigo-200/60">{{ s.points }} {{ pointsUnit }}</p>
+                <p class="text-xs text-indigo-200/60">{{ fmtInt(s.points) }} {{ pointsUnit }}</p>
               </div>
             </div>
           </div>
@@ -208,7 +208,7 @@
               >
                 −5
               </button>
-              <input v-model.number="delta" type="number" class="input flex-1 text-center !text-2xl font-black !py-2" />
+              <input v-model.number="delta" type="number" step="1" class="input flex-1 text-center !text-2xl font-black !py-2" />
               <button
                 class="btn btn-primary !px-4 !text-2xl font-black shrink-0"
                 title="点击一次，分值加 5"
@@ -222,7 +222,7 @@
               <span>加分方向</span>
             </div>
             <div class="mt-2 flex items-center justify-between text-xs">
-              <span class="text-indigo-200/60">当前分值：<b class="text-lg" :class="delta >= 0 ? 'text-emerald-300' : 'text-rose-300'">{{ delta > 0 ? '+' : '' }}{{ delta }}</b></span>
+              <span class="text-indigo-200/60">当前分值：<b class="text-lg" :class="delta >= 0 ? 'text-emerald-300' : 'text-rose-300'">{{ delta > 0 ? '+' : '' }}{{ fmtInt(delta) }}</b></span>
               <button class="btn btn-ghost !py-1 !px-2 text-xs" @click="delta = 5">恢复默认 5</button>
             </div>
             <input v-model="reason" class="input !py-1.5 !text-sm mt-3" placeholder="加减分理由（必填）" @keyup.enter="applyPoints" />
@@ -258,7 +258,7 @@
                 ]"
                 @click="usePreset(p)"
               >
-                {{ p.label }} {{ p.delta > 0 ? '+' : '' }}{{ p.delta }}
+                {{ p.label }} {{ p.delta > 0 ? '+' : '' }}{{ fmtInt(p.delta) }}
                 <X class="w-3 h-3 opacity-40 group-hover:opacity-100 hover:text-rose-200" @click.stop="removePreset(p)" />
               </button>
               <button
@@ -331,7 +331,7 @@
               </span>
             </div>
             <p class="mt-2 font-bold text-indigo-50">{{ p.name }}</p>
-            <p class="text-sm text-amber-300 font-semibold">{{ p.points }} {{ pointsUnit }}</p>
+            <p class="text-sm text-amber-300 font-semibold">{{ fmtInt(p.points) }} {{ pointsUnit }}</p>
           </div>
         </div>
 
@@ -344,7 +344,7 @@
               <template v-if="p.petAvatar && !avatarFailed.has(p.id)"><img :src="p.petAvatar" class="w-7 h-7 rounded-full object-cover" alt="" @error="avatarFailed.add(p.id)" /></template>
               <span v-else class="text-xl">{{ p.petEmoji }}</span>
               <span class="font-medium text-indigo-50 truncate">{{ p.name }}</span>
-              <span class="ml-auto font-bold text-amber-300">{{ p.points }}</span>
+              <span class="ml-auto font-bold text-amber-300 shrink-0">{{ fmtInt(p.points) }}</span>
             </div>
           </div>
           <div class="glass p-4">
@@ -354,7 +354,7 @@
               <template v-if="p.petAvatar && !avatarFailed.has(p.id)"><img :src="p.petAvatar" class="w-7 h-7 rounded-full object-cover" alt="" @error="avatarFailed.add(p.id)" /></template>
               <span v-else class="text-xl">{{ p.petEmoji }}</span>
               <span class="font-medium text-indigo-50 truncate">{{ p.name }}<span v-if="p.petStageLabel" class="ml-1 text-fuchsia-300/70 text-[10px]">Lv.{{ (p.petStage ?? 0) + 1 }}</span></span>
-              <span class="ml-auto font-bold text-amber-300">{{ p.points }}</span>
+              <span class="ml-auto font-bold text-amber-300 shrink-0">{{ fmtInt(p.points) }}</span>
             </div>
           </div>
         </div>
@@ -384,7 +384,7 @@
                 </template>
                 <span v-else>—</span>
               </td>
-                <td class="px-5 py-3 text-right font-bold text-amber-300">{{ r.points }}</td>
+                <td class="px-5 py-3 text-right font-bold text-amber-300">{{ fmtInt(r.points) }}</td>
               </tr>
             </tbody>
           </table>
@@ -453,8 +453,8 @@
         <div v-if="historyList.length === 0" class="py-8 text-center text-indigo-200/50">暂无记录</div>
         <ul v-else class="space-y-2 max-h-[460px] overflow-y-auto pr-1">
           <li v-for="h in historyList" :key="h.id" class="flex items-center gap-3 rounded-lg bg-white/4 px-4 py-2.5">
-            <span class="w-10 text-center font-bold" :class="h.delta >= 0 ? 'text-emerald-300' : 'text-rose-300'">
-              {{ h.delta >= 0 ? '+' : '' }}{{ h.delta }}
+            <span class="w-16 shrink-0 text-right font-bold mr-3" :class="h.delta >= 0 ? 'text-emerald-300' : 'text-rose-300'">
+              {{ h.delta >= 0 ? '+' : '' }}{{ fmtInt(h.delta) }}
             </span>
             <span class="flex-1 text-sm text-indigo-100">{{ h.reason || '（无备注）' }}</span>
             <span class="text-xs text-indigo-200/50">{{ fmtTime(h.created_at) }}</span>
@@ -492,7 +492,7 @@ import PetsLevelManager from '../components/PetsLevelManager.vue';
 import { api, clearAuth } from '../api';
 import { toast } from '../composables/toast';
 import { pushUndoable } from '../composables/undo';
-import { fmtExp } from '../utils/format';
+import { fmtExp, fmtInt } from '../utils/format';
 import UndoButton from '../components/UndoButton.vue';
 import { useSettings } from '../composables/settings';
 import { useFrostHeader } from '../composables/useFrostHeader';
@@ -694,6 +694,10 @@ async function applyPoints(): Promise<void> {
     toast('请填写加减分理由', 'error');
     return;
   }
+  if (!Number.isInteger(delta.value) || Math.abs(delta.value) > 1_000_000_000) {
+    toast('分值必须是 -10^9 ~ 10^9 范围内的整数', 'error');
+    return;
+  }
   try {
     const targetIds = [...selected];
     const r = await api<{ applied: number; totalDelta: number; events?: { eventId: string; studentId: string; delta: number; newPoints: number }[] }>('/points', {
@@ -713,7 +717,7 @@ async function applyPoints(): Promise<void> {
         r.applied === 1
           ? `${students.value.find((s) => s.id === r.events![0].studentId)?.name ?? '该学生'}`
           : `${r.applied} 名学生`;
-      pushUndoable(`${label} ${delta.value >= 0 ? '+' : '-'}${Math.abs(delta.value)}`, ids);
+      pushUndoable(`${label} ${delta.value >= 0 ? '+' : '-'}${fmtInt(Math.abs(delta.value))}`, ids);
     }
     // 记住常用操作（分值/理由），下次进入自动还原
     try {
@@ -769,6 +773,10 @@ async function quickSavePreset(): Promise<void> {
   }
   if (!delta.value) {
     toast('分值为 0，无法保存', 'error');
+    return;
+  }
+  if (!Number.isInteger(delta.value)) {
+    toast('分值必须是整数（不支持小数）', 'error');
     return;
   }
   try {

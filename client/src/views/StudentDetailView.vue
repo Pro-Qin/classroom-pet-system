@@ -112,7 +112,7 @@
               </span>
               <p class="mt-1 text-lg font-bold text-indigo-50">{{ pet.name }}</p>
               <p class="text-xs text-indigo-200/60">
-                经验 {{ fmtExp(pet.exp) }} / 下一阶段 {{ fmtExp(nextExp) }}
+                经验 {{ fmtExp(Math.max(0, pet.exp)) }} / 下一阶段 {{ fmtExp(nextExp) }}
               </p>
               <div class="mt-2 w-48 h-2 rounded-full bg-white/10 overflow-hidden">
                 <div

@@ -41,7 +41,8 @@
       </div>
       <div class="mt-3 flex items-center gap-2 flex-wrap">
         <button class="btn btn-primary !py-1.5 text-xs" @click="saveLevels"><Check class="w-3.5 h-3.5" /> 保存等级体系</button>
-        <button v-if="custom" class="btn btn-ghost !py-1.5 text-xs" @click="resetDefaults">恢复默认 7 级</button>
+        <button v-if="custom" class="btn btn-ghost !py-1.5 text-xs" @click="resetClassic">恢复经典 7 级（蛋~传说）</button>
+        <button v-if="custom" class="btn btn-ghost !py-1.5 text-xs" @click="resetGrowth15">重置为 15 级成长线（推荐）</button>
       </div>
       <p v-if="levelMsg" class="text-xs mt-2" :class="levelMsgType === 'err' ? 'text-rose-300' : 'text-emerald-300'">{{ levelMsg }}</p>
     </div>
@@ -185,7 +186,15 @@ async function saveLevels(): Promise<void> {
   }
 }
 
-async function resetDefaults(): Promise<void> {
+/** 恢复经典 7 级：名称=默认七阶，经验=旧默认阈值 */
+async function resetClassic(): Promise<void> {
+  form.names = ['蛋', '破壳', '幼年', '成长', '成熟', '进化', '传说'];
+  form.thresholds = [0, 100, 300, 600, 1000, 1500, 2200];
+  await saveLevels();
+}
+
+/** 重置为 15 级成长线：Lv.2=1000 每级 ×1.12，总需求 32,369（中游学生约一年满级） */
+async function resetGrowth15(): Promise<void> {
   form.names = ['蛋', '破壳', '幼年', '成长', '成熟', '进化', '传说', '传奇', '神话', '史诗', '闪耀', '王者', '星耀', '至尊', '巅峰'];
   form.thresholds = [0, 1000, 1120, 1254, 1404, 1572, 1761, 1972, 2209, 2474, 2771, 3103, 3476, 3893, 4360];
   await saveLevels();

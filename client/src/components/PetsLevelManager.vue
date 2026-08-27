@@ -122,15 +122,23 @@ async function loadLevels(): Promise<void> {
   }
 }
 
-/** 8~15 级的预设名称池：加级时按序取用 */
-const EXTRA_LEVEL_NAMES = ['传奇', '神话', '史诗', '闪耀', '王者', '星耀', '至尊', '巅峰'];
+/** 1~15 级的预设名称池：加级时按序取用（前 7 级与默认等级名一致） */
+const PRESET_LEVEL_NAMES = [
+  '蛋', '破壳', '幼年', '成长', '成熟', '进化', '传说',
+  '传奇', '神话', '史诗', '闪耀', '王者', '星耀', '至尊', '巅峰',
+];
+
+/** 默认经验：上一级的 1.5 倍（整数、严格递增；Lv.1 为 0，Lv.2 兜底 100） */
+function presetExp(prev: number): number {
+  if (prev <= 0) return 100;
+  return Math.max(prev + 1, Math.round(prev * 1.5));
+}
 
 function addLevel(): void {
   if (form.names.length >= maxLevels) return;
-  const nextExp = (form.thresholds[form.thresholds.length - 1] ?? 0) + 100;
-  const presetName = EXTRA_LEVEL_NAMES[form.names.length - 7] ?? `Lv.${form.names.length + 1}级`;
-  form.names.push(presetName);
-  form.thresholds.push(nextExp);
+  const prevExp = form.thresholds[form.thresholds.length - 1] ?? 0;
+  form.names.push(PRESET_LEVEL_NAMES[form.names.length] ?? `Lv.${form.names.length + 1}级`);
+  form.thresholds.push(presetExp(prevExp));
 }
 
 function removeLevel(): void {

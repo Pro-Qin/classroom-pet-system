@@ -1,4 +1,5 @@
 import { getDb, nowIso } from '../db/connection.js';
+import { settleAllPets } from './pets.js';
 import { getSetting, setSetting } from '../db/settings.js';
 import { snapshotDb } from '../db/backup.js';
 import { getTransport } from '../routes/sync.js';
@@ -48,6 +49,18 @@ async function autoPullOnce(): Promise<void> {
 
 async function tick(): Promise<void> {
   try {
+    // ---- 全员宠物经验结算（每小时一次；后台自动，与学生是否查看无关）----
+    const lastSettle = Number(getSetting('pets_settle_last_at') ?? '0') || 0;
+    if (Date.now() - lastSettle >= 3_600_000) {
+      setSetting('pets_settle_last_at', String(Date.now()));
+      try {
+        const r = settleAllPets(getDb());
+        if (r.settled > 0) console.log(`[scheduler] 宠物经验结算：${r.settled} 只，共 +${r.expTotal} 经验`);
+      } catch (e) {
+        console.warn('[scheduler] 宠物经验结算失败:', (e as Error).message);
+      }
+    }
+
     const today = nowIso().slice(0, 10);
     // ---- 每日快照（03:00 后首个 tick；date key 幂等）----
     const lastSnapDay = getSetting('last_daily_snapshot') ?? '';

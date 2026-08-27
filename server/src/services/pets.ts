@@ -258,31 +258,62 @@ export function computeState(pet: Pick<PetRow, 'health' | 'hungry' | 'happy' | '
 
 const MIN_ATTR = 5;
 
+/** 宠物每日自然成长经验（按自然日累积，离线也补算；可在 settings 调整） */
+export const DEFAULT_PET_EXP_PER_DAY = 8;
+
+export function getPetExpPerDay(db?: SqliteDb): number {
+  const d = db ?? getDb();
+  const raw = Number(readSettingsJson(d, 'pet_exp_per_day'));
+  return Number.isFinite(raw) && raw >= 0 ? Math.min(200, Math.round(raw)) : DEFAULT_PET_EXP_PER_DAY;
+}
+
 /**
- * 属性自然衰减（温和版：学生接触系统频率低，绝不惩罚）。
- * 每 24h：hungry -8、happy -6、clean -10；当 hungry<40 或 clean<40 时 health 额外 -5。
- * 低于 4 小时不衰减；属性下限 5（永不死亡）。
+ * 宠物时间结算（惰性记账，无惩罚）：
+ *  - 只做经验按自然日累积（默认 8 点/天），几天没打开也会在下一次结算时全额补上；
+ *  - 不做任何属性衰减 —— 状态只被道具/操作改变，不因"没来看"而惩罚。
+ * 触发时机：学生查看详情 / 教师管理列表等读取场景，无需定时器。
  */
-export function tickPet(pet: PetRow, db?: SqliteDb): { changed: boolean } {
+export function tickPet(pet: PetRow, db?: SqliteDb): { changed: boolean; expGain: number } {
   const d = db ?? getDb();
   const now = Date.now();
   const last = new Date(pet.last_tick_at).getTime();
   const elapsedH = (now - last) / 3_600_000;
-  if (elapsedH < 4) return { changed: false };
+  if (elapsedH < 4) return { changed: false, expGain: 0 };
 
   const days = elapsedH / 24;
-  const clamp = (v: number): number => Math.max(MIN_ATTR, Math.min(100, Math.round(v)));
-  const hungry = clamp(pet.hungry - 8 * days);
-  const happy = clamp(pet.happy - 6 * days);
-  const clean = clamp(pet.clean - 10 * days);
-  let health = pet.health;
-  if (hungry < 40 || clean < 40) health = clamp(health - 5 * days);
+  const expGain = Math.round(days * getPetExpPerDay(d));
+  const exp = Math.max(0, pet.exp + expGain);
 
   const ts = nowIso();
-  d.prepare(
-    `UPDATE pets SET health=?, hungry=?, happy=?, clean=?, last_tick_at=?, updated_at=? WHERE id=?`
-  ).run(health, hungry, happy, clean, ts, ts, pet.id);
-  return { changed: true };
+  d.prepare(`UPDATE pets SET exp=?, last_tick_at=?, updated_at=? WHERE id=?`).run(exp, ts, ts, pet.id);
+  return { changed: true, expGain };
+}
+
+/**
+ * 后台批量结算：为全部宠物一次性补齐时间经验（调度器每小时调用）。
+ * 与 tickPet 共用 last_tick_at 记账位，先到先结算、后到自动空转，绝不重复计费。
+ */
+export function settleAllPets(db?: SqliteDb): { settled: number; expTotal: number } {
+  const d = db ?? getDb();
+  const perDay = getPetExpPerDay(d);
+  const rows = d
+    .prepare(`SELECT id, exp, last_tick_at FROM pets WHERE deleted_at IS NULL`)
+    .all() as { id: string; exp: number; last_tick_at: string }[];
+  let settled = 0;
+  let expTotal = 0;
+  const ts = nowIso();
+  const stmt = d.prepare(`UPDATE pets SET exp=?, last_tick_at=?, updated_at=? WHERE id=?`);
+  for (const r of rows) {
+    const last = new Date(r.last_tick_at).getTime();
+    const hours = (Date.now() - last) / 3_600_000;
+    if (!Number.isFinite(hours) || hours < 4) continue; // 不足 4 小时跳过
+    const gain = Math.round((hours / 24) * perDay);
+    if (gain <= 0) continue;
+    stmt.run(Math.max(0, r.exp + gain), ts, ts, r.id);
+    settled += 1;
+    expTotal += gain;
+  }
+  return { settled, expTotal };
 }
 
 export interface ItemRow {

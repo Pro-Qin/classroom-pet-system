@@ -101,6 +101,58 @@ describe('背包新结构（id 主键，可同步）', () => {
   });
 });
 
+describe('宠物时间自然成长（后台批量、无离线惩罚）', () => {
+  it('settleAllPets：三天没结算的宠物补 24 经验，属性不衰减（无惩罚）；刚结算过的不动', async () => {
+    const { settleAllPets } = await import('../src/services/pets.js');
+    const ts = nowIso();
+    db.prepare(
+      `INSERT INTO students (id, student_no, name, class_name, subject, points, created_at, updated_at)
+       VALUES ('tick_stu','T99','打卡生','', '', 0, ?, ?)`
+    ).run(ts, ts);
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString();
+    const justNow = new Date(Date.now() - 3600_000).toISOString();
+    db.prepare(
+      `INSERT INTO students (id, student_no, name, class_name, subject, points, created_at, updated_at)
+       VALUES ('tick_stu2','T98','打卡生二号','', '', 0, ?, ?)`
+    ).run(ts, ts);
+    db.prepare(
+      `INSERT INTO pets (id, student_id, species_id, name, exp, health, hungry, happy, clean, last_tick_at, created_at, updated_at)
+       VALUES ('tick_pet','tick_stu','cat','钟表匠', 10, 100, 100, 100, 100, ?, ?, ?)`
+    ).run(threeDaysAgo, ts, ts);
+    db.prepare(
+      `INSERT INTO pets (id, student_id, species_id, name, exp, health, hungry, happy, clean, last_tick_at, created_at, updated_at)
+       VALUES ('tick_pet2','tick_stu2','cat','小钟', 5, 100, 100, 100, 100, ?, ?, ?)`
+    ).run(justNow, ts, ts);
+
+    const r = settleAllPets(getDb());
+    expect(r.settled).toBe(1); // 只有超过 4 小时的那只
+    expect(r.expTotal).toBe(24); // 3 天 × 8
+
+    const a = db.prepare(`SELECT exp, hungry FROM pets WHERE id='tick_pet'`).get() as { exp: number; hungry: number };
+    expect(a.exp).toBe(34); // 10 + 24
+    expect(a.hungry).toBe(100); // 无离线惩罚：属性纹丝不动
+
+    const b = db.prepare(`SELECT exp FROM pets WHERE id='tick_pet2'`).get() as { exp: number };
+    expect(b.exp).toBe(5);
+  });
+
+  it('重复结算不重复计费（last_tick_at 记账位）', async () => {
+    const { settleAllPets } = await import('../src/services/pets.js');
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString();
+    const ts = nowIso();
+    db.prepare(
+      `INSERT INTO pets (id, student_id, species_id, name, exp, last_tick_at, created_at, updated_at)
+       VALUES ('tick_pet3','tick_stu','cat','记账猫', 0, ?, ?, ?)`
+    ).run(threeDaysAgo, ts, ts);
+    settleAllPets(getDb());
+    const after1 = (db.prepare(`SELECT exp FROM pets WHERE id='tick_pet3'`).get() as { exp: number }).exp;
+    settleAllPets(getDb());
+    const after2 = (db.prepare(`SELECT exp FROM pets WHERE id='tick_pet3'`).get() as { exp: number }).exp;
+    expect(after1).toBe(24);
+    expect(after2).toBe(24); // 第二次空转
+  });
+});
+
 describe('统一配置导出/导入', () => {
   it('按类别导出→清空→导入恢复（数据一致且 updated_at 已刷新为可同步时间）', async () => {
     const { exportConfig, importConfig, CATEGORIES } = await import('../src/services/configTransfer.js');

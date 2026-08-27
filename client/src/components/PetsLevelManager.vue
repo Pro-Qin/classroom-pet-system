@@ -17,7 +17,9 @@
           <span class="text-indigo-200/50">共 {{ form.names.length }}/{{ maxLevels }} 级</span>
         </div>
       </div>
-      <p class="text-xs text-indigo-200/60 mb-3">每级可改名称与起始经验（Lv.1 固定 0，需逐级递增）；保存后全局生效（教师端/学生端/大屏同步显示）。</p>
+      <p class="text-xs text-indigo-200/60 mb-3">
+        每级可改名称与起始经验（Lv.1 固定 0，需逐级递增）；保存后全局生效。加级时经验默认为上一级 ×1.12 —— 默认曲线下宠物每天自然成长约 8~10 经验（离线也按天补算），约一年满级。
+      </p>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
         <div
           v-for="(name, i) in form.names"
@@ -128,10 +130,13 @@ const PRESET_LEVEL_NAMES = [
   '传奇', '神话', '史诗', '闪耀', '王者', '星耀', '至尊', '巅峰',
 ];
 
-/** 默认经验：上一级的 1.5 倍（整数、严格递增；Lv.1 为 0，Lv.2 兜底 100） */
+/**
+ * 默认经验：上一级 ×1.12（取整、严格递增；Lv.1 固定 0，Lv.2 兜底 100）。
+ * 该曲线 15 级总需求约 3200 经验 —— 按自然成长约 8~10 点/天，一年左右满级。
+ */
 function presetExp(prev: number): number {
   if (prev <= 0) return 100;
-  return Math.max(prev + 1, Math.round(prev * 1.5));
+  return Math.max(prev + 1, Math.round(prev * 1.12));
 }
 
 function addLevel(): void {

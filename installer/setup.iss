@@ -52,12 +52,12 @@ Name: "chinesesimplified"; MessagesFile: "languages\ChineseSimplified.isl"
 [Messages]
 ; --- 欢迎/介绍页（第一个页面）---
 WelcomeLabel1=哇塞！你要安装"校园宠物乐园"吗？太好了！
-WelcomeLabel2=我要在你的电脑上装 [name/ver]啦ヾ(๑╹◡╹)ﾉ%n(*＾ω＾)人(＾ω＾*)建议先关闭其他碍眼的程序喵%n快点“下一步”继续｀Д´|
+WelcomeLabel2=我要在你的电脑上装 [name/ver]啦ヾ(๑╹◡╹)ﾉ%n(*＾ω＾)人(＾ω＾*)没装 Node.js 也没关系，首次启动会自动下载便携版喵%n快点“下一步”继续｀Д´|
 ; --- “选择安装位置”页 ---
 WizardSelectDir=装在哪里好呢？[・ヘ・?]
 SelectDirDesc=你觉得把 [name] 装在哪里好(゜-゜)
 SelectDirBrowseLabel=觉得没问题啦就点“下一步”哦(oﾟ▽ﾟ)o 想换地方就点“浏览”(´･ᴗ･`)
-DiskSpaceMBLabel=装好后大约占 200 MB 空间哦（含首次运行时自动下载的依赖 ~190MB）！ψ(｀∇´)ψ
+DiskSpaceMBLabel=磁盘约需 200 MB（含首跑自动下载的依赖 ~190MB）；运行内存约 150~300 MB。都小小的，不慌！ψ(｀∇´)ψ
 ; --- “选择附加任务”页 ---
 WizardSelectTasks=要不要点别的？(〃ﾉωﾉ)
 SelectTasksDesc=你想让我执行点别的任务？(*ﾉωﾉ)

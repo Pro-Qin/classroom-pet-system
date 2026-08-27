@@ -1,8 +1,11 @@
 package main
 
 import (
+	"archive/zip"
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"net/http"
@@ -80,9 +83,10 @@ func run() int {
 
 	printBanner()
 
-	// 1. Check Node.js
-	if !hasNode() {
-		stepErr("未检测到 Node.js", "请先安装 Node.js 18 或更高版本：https://nodejs.org")
+	// 1. Resolve Node.js: PATH → 随包便携版 → 自动下载便携版（真实进度条）
+	rt, err := resolveNodeRuntime(appDir)
+	if err != nil {
+		stepErr("未检测到 Node.js", "自动下载失败："+err.Error()+"。可手动安装 Node.js 18+：https://nodejs.org 后重试")
 		pause()
 		return 1
 	}
@@ -94,7 +98,7 @@ func run() int {
 		fmt.Println()
 		fmt.Println("  ▶ 首次运行：正在安装依赖（国内镜像源，需联网，约 1-3 分钟）...")
 		fmt.Println()
-		if err := npmInstall(appDir); err != nil {
+		if err := npmInstall(rt, appDir); err != nil {
 			stepErr("依赖安装失败", "请检查网络，或手动在项目目录执行：npm install")
 			pause()
 			return 1
@@ -107,7 +111,7 @@ func run() int {
 		fmt.Println()
 		fmt.Println("  ▶ 首次运行：正在构建产物...")
 		fmt.Println()
-		if err := npmRunBuild(appDir); err != nil {
+		if err := npmRunBuild(rt, appDir); err != nil {
 			stepErr("构建失败", "请查看上方错误信息")
 			fmt.Println()
 			pause()
@@ -127,7 +131,7 @@ func run() int {
 		fmt.Printf("  ▶ 正在启动服务（端口 %d）...\n", port)
 		// 开机自检：杀掉上次运行残留的服务进程，避免端口/进程堆积。
 		killStaleServer(appDir)
-		done, err := startServer(appDir, port)
+		done, err := startServer(rt, appDir, port)
 		if err != nil {
 			stepErr("服务启动失败", "")
 			fmt.Println()
@@ -179,6 +183,226 @@ func stepErr(title string, hint string) {
 	fmt.Println()
 }
 
+// ---------- Node.js 运行时解析与自动下载 ----------
+
+// nodeVersion 固定的便携版 Node LTS 版本（三镜像均同步此版本）
+const nodeVersion = "v20.19.4"
+const nodeArchive = nodeVersion + "/node-" + nodeVersion + "-win-x64.zip"
+
+// 下载源：国内优先（npmmirror → 华为云 → 官方）
+var nodeMirrors = []string{
+	"https://registry.npmmirror.com/-/binary/node/" + nodeArchive,
+	"https://mirrors.huaweicloud.com/nodejs/" + nodeArchive,
+	"https://nodejs.org/dist/" + nodeArchive,
+}
+
+// nodeRuntime 描述如何调用 node / npm（全局 PATH 或随包便携版）。
+type nodeRuntime struct {
+	nodeExe string // node 可执行文件（绝对路径或裸名）
+	npmCmd  string // npm 入口（绝对路径 npm.cmd 或裸名 "npm"）
+	portDir string // 便携版目录；空 = 全局安装
+}
+
+// childEnv 返回子进程环境：便携模式下把便携目录前置到 PATH，
+// 保证 npm.cmd 内部调用的 node 也命中便携版。
+func (rt *nodeRuntime) childEnv() []string {
+	if rt.portDir == "" {
+		return os.Environ()
+	}
+	env := os.Environ()
+	for i, kv := range env {
+		// Windows 上 os.Environ() 通常返回 "Path=..."，做大小写无关匹配
+		if len(kv) > 5 && strings.EqualFold(kv[:5], "PATH=") && len(kv) >= 5 {
+			env[i] = kv[:5] + rt.portDir + string(os.PathListSeparator) + kv[5:]
+			return env
+		}
+	}
+	return append(env, "PATH="+rt.portDir)
+}
+
+func portableRt(dir string) *nodeRuntime {
+	return &nodeRuntime{
+		nodeExe: filepath.Join(dir, "node.exe"),
+		npmCmd:  filepath.Join(dir, "npm.cmd"),
+		portDir: dir,
+	}
+}
+
+func portableNodeOK(dir string) bool {
+	return fileExists(filepath.Join(dir, "node.exe")) && fileExists(filepath.Join(dir, "npm.cmd"))
+}
+
+// resolveNodeRuntime 依次尝试：全局 PATH → 已下载的便携版 → 自动下载便携版。
+func resolveNodeRuntime(appDir string) (*nodeRuntime, error) {
+	if hasNode() {
+		return &nodeRuntime{nodeExe: "node", npmCmd: "npm"}, nil
+	}
+	portable := filepath.Join(appDir, "runtime", "node")
+	if portableNodeOK(portable) {
+		fmt.Println("  ✓ 使用随包 Node.js 便携版（runtime\node）")
+		return portableRt(portable), nil
+	}
+	fmt.Println()
+	fmt.Println("  ▶ 未检测到 Node.js，正在自动下载便携版（约 30 MB，国内镜像优先）...")
+	fmt.Println()
+	if err := downloadPortableNode(portable); err != nil {
+		return nil, err
+	}
+	if !portableNodeOK(portable) {
+		return nil, errors.New("下载解压后未找到 node.exe（可能磁盘已满或被杀软拦截）")
+	}
+	fmt.Println()
+	fmt.Println("  ✓ Node.js 便携版就绪：" + portable)
+	return portableRt(portable), nil
+}
+
+// downloadWithProgress 流式下载并按真实字节画进度条。失败返回错误（调用方换镜像）。
+func downloadWithProgress(label, url, dest string) error {
+	client := &http.Client{Timeout: 10 * time.Minute}
+	resp, err := client.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	total := resp.ContentLength // -1 = 未知
+	tmp := dest + ".part"
+	f, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	buf := make([]byte, 256*1024)
+	var received int64
+	start := time.Now()
+	for {
+		n, rerr := resp.Body.Read(buf)
+		if n > 0 {
+			if _, werr := f.Write(buf[:n]); werr != nil {
+				f.Close()
+				return werr
+			}
+			received += int64(n)
+			drawDownloadProgress(label, received, total, start)
+		}
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			f.Close()
+			return rerr
+		}
+	}
+	f.Close()
+	fmt.Println() // 结束进度条行
+	return os.Rename(tmp, dest)
+}
+
+// drawDownloadProgress 按真实字节数绘制进度（未知总长时退化为平滑动画）。
+func drawDownloadProgress(label string, received, total int64, start time.Time) {
+	const width = 30
+	var pct int
+	var right string
+	if total > 0 {
+		pct = int(float64(received) / float64(total) * 100)
+		right = fmt.Sprintf(" %s/%s", mbStr(received), mbStr(total))
+	} else {
+		pct = progressPercent(time.Since(start))
+		right = " " + mbStr(received)
+	}
+	filled := pct * width / 100
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
+	fmt.Printf("\r  %s [%s] %3d%%%s   ", label, bar, pct, right)
+}
+
+func mbStr(b int64) string {
+	return fmt.Sprintf("%.1fMB", float64(b)/1024/1024)
+}
+
+// unzipStripTopLevel 解压 zip 到 dest，并剥掉压缩包内的顶层目录
+// （node-vXX-win-x64/... → dest/...），让 node.exe 直接位于 dest 根部。
+func unzipStripTopLevel(src, dest string) error {
+	r, err := zip.OpenReader(src)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	for _, f := range r.File {
+		name := filepath.ToSlash(f.Name)
+		i := strings.Index(name, "/")
+		if i < 0 || i == len(name)-1 {
+			continue // 顶层目录本身 / 空名跳过
+		}
+		rel := name[i+1:]
+		if rel == "" {
+			continue
+		}
+		target := filepath.Join(dest, filepath.FromSlash(rel))
+		if !strings.HasPrefix(target, filepath.Clean(dest)+string(os.PathSeparator)) {
+			return errors.New("zip 内出现越界路径: " + f.Name)
+		}
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+		out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+		if err != nil {
+			rc.Close()
+			return err
+		}
+		if _, err := io.Copy(out, rc); err != nil {
+			out.Close()
+			rc.Close()
+			return err
+		}
+		out.Close()
+		rc.Close()
+	}
+	return nil
+}
+
+// downloadPortableNode 依次尝试多个镜像下载并解压便携版 Node。
+func downloadPortableNode(destDir string) error {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return err
+	}
+	zipPath := filepath.Join(destDir, "..", "node-portable.zip")
+	var lastErr error = errors.New("未尝试任何镜像")
+	for _, url := range nodeMirrors {
+		host := url
+		if i := strings.Index(url, "//"); i >= 0 {
+			if j := strings.Index(url[i+2:], "/"); j >= 0 {
+				host = url[i+2 : i+2+j]
+			}
+		}
+		fmt.Printf("  ▶ 镜像 %s ...\n", host)
+		if err := downloadWithProgress("下载 Node.js", url, zipPath); err != nil {
+			fmt.Printf("\n  ⚠ 该镜像失败（%v），换下一个...\n", err)
+			lastErr = err
+			continue
+		}
+		fmt.Println("  ▶ 正在解压 ...")
+		if err := unzipStripTopLevel(zipPath, destDir); err != nil {
+			fmt.Printf("\n  ⚠ 解压失败（%v），换下一个...\n", err)
+			lastErr = err
+			continue
+		}
+		_ = os.Remove(zipPath)
+		return nil
+	}
+	return fmt.Errorf("所有镜像均失败（%v）", lastErr)
+}
+
 // hasNode reports whether node is on PATH.
 func hasNode() bool {
 	for _, bin := range []string{"node", "node.exe"} {
@@ -190,15 +414,17 @@ func hasNode() bool {
 	return false
 }
 
-func npmInstall(dir string) error {
-	cmd := exec.Command("npm", "install", "--registry="+chinaMirror, "--no-audit", "--no-fund")
+func npmInstall(rt *nodeRuntime, dir string) error {
+	cmd := exec.Command(rt.npmCmd, "install", "--registry="+chinaMirror, "--no-audit", "--no-fund")
 	cmd.Dir = dir
+	cmd.Env = rt.childEnv()
 	return runWithProgress("正在安装依赖（国内镜像源，需联网）", cmd)
 }
 
-func npmRunBuild(dir string) error {
-	cmd := exec.Command("npm", "run", "build")
+func npmRunBuild(rt *nodeRuntime, dir string) error {
+	cmd := exec.Command(rt.npmCmd, "run", "build")
 	cmd.Dir = dir
+	cmd.Env = rt.childEnv()
 	return runWithProgress("正在构建产物", cmd)
 }
 
@@ -314,15 +540,12 @@ func drawProgress(pct int) {
 // the process-started signal, the child's done channel (closed the moment the
 // process exits), and any start error. The done channel lets the caller detect
 // an early crash below instead of swallowing it.
-func startServer(dir string, port int) (<-chan struct{}, error) {
+func startServer(rt *nodeRuntime, dir string, port int) (<-chan struct{}, error) {
 	script := filepath.Join("server", "dist", "index.js")
-	nodeExe := "node"
-	if runtime.GOOS == "windows" {
-		nodeExe = "node.exe"
-	}
-	cmd := exec.Command(nodeExe, script)
+	cmd := exec.Command(rt.nodeExe, script)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "PET_PORT="+fmt.Sprint(port), "PORT="+fmt.Sprint(port))
+	env := append(rt.childEnv(), "PET_PORT="+fmt.Sprint(port), "PORT="+fmt.Sprint(port))
+	cmd.Env = env
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {

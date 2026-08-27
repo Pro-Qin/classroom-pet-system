@@ -760,7 +760,7 @@ async function doAdopt(): Promise<void> {
 async function checkUpdate(): Promise<void> {
   try {
     const r = await api<{ hasUpdate: boolean; latestVersion: string; downloadUrl?: string }>('/updates/check');
-    updateInfo.value = { hasUpdate: !!r.hasUpdate, latestVersion: r.latestVersion, url: r.downloadUrl || 'https://gitee.com/am-zzq/classroom-pet-system/releases' };
+    updateInfo.value = { hasUpdate: !!r.hasUpdate, latestVersion: r.latestVersion, url: r.downloadUrl || 'https://github.com/Pro-Qin/classroom-pet-system/releases/latest' };
   } catch {
     updateInfo.value = { hasUpdate: false, latestVersion: '', url: '' };
   }

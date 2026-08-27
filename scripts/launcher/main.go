@@ -15,7 +15,9 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
+	"unsafe"
 )
 
 const (
@@ -66,6 +68,17 @@ func main() {
 // the window open when the server fails to start") are testable.
 func run() int {
 	initConsole() // set UTF-8 codepage on Windows
+
+	// 单实例：已有实例在跑时，直接打开页面并秒退本实例，
+	// 避免"安装完成页点启动 + 双击桌面图标 / 开机自启 + 手动"产生第二个终端窗口。
+	if !acquireSingleInstance() {
+		fmt.Println("  ✓ 程序已在运行，正在为你打开页面（本窗口即将自动关闭）...")
+		time.Sleep(800 * time.Millisecond)
+		openBrowser(fmt.Sprintf("http://localhost:%d", readServerPort()))
+		time.Sleep(300 * time.Millisecond)
+		return 0
+	}
+	defer releaseSingleInstance()
 
 	// Determine app directory: folder containing this exe / bat.
 	exe, err := os.Executable()
@@ -146,6 +159,7 @@ func run() int {
 			return 1
 		}
 		fmt.Printf("  ✓ 服务地址：http://localhost:%d\n", port)
+		_ = os.WriteFile(filepath.Join(appDir, ".pet_server.port"), []byte(fmt.Sprint(port)), 0o644)
 		fmt.Println("    本机其他设备（同一局域网）访问：http://本机IP:" + fmt.Sprint(port))
 		fmt.Println("    按 Ctrl+C 或关闭本窗口即可停止服务。")
 		fmt.Println()
@@ -458,6 +472,7 @@ func npmInstall(rt *nodeRuntime, dir string) error {
 	cmd := exec.Command(rt.npmCmd, "install", "--registry="+chinaMirror, "--no-audit", "--no-fund")
 	cmd.Dir = dir
 	cmd.Env = rt.childEnv()
+	noNewConsole(cmd)
 	return runWithProgress("正在安装依赖（国内镜像源，需联网）", cmd)
 }
 
@@ -465,6 +480,7 @@ func npmRunBuild(rt *nodeRuntime, dir string) error {
 	cmd := exec.Command(rt.npmCmd, "run", "build")
 	cmd.Dir = dir
 	cmd.Env = rt.childEnv()
+	noNewConsole(cmd)
 	return runWithProgress("正在构建产物", cmd)
 }
 
@@ -586,6 +602,7 @@ func startServer(rt *nodeRuntime, dir string, port int) (<-chan struct{}, error)
 	cmd.Dir = dir
 	env := append(rt.childEnv(), "PET_PORT="+fmt.Sprint(port), "PORT="+fmt.Sprint(port))
 	cmd.Env = env
+	noNewConsole(cmd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
@@ -704,3 +721,60 @@ func fileExists(p string) bool {
 	info, err := os.Stat(p)
 	return err == nil && !info.IsDir()
 }
+
+// ---------- 单实例互斥与子进程窗口控制 ----------
+
+var muHandle uintptr
+
+// acquireSingleInstance 尝试获取全局命名互斥体；false = 已有实例在运行。
+func acquireSingleInstance() bool {
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	name, err := syscall.UTF16PtrFromString("Global\\CampusPetParadise_SingleInstance_Mutex")
+	if err != nil {
+		return true // 名字构造失败则放行（宁多勿锁死）
+	}
+	h, _, err2 := kernel32.NewProc("CreateMutexW").Call(0, 0, uintptr(unsafe.Pointer(name)))
+	if h == 0 {
+		return true
+	}
+	const ERROR_ALREADY_EXISTS = 183
+	if err2.(syscall.Errno) == ERROR_ALREADY_EXISTS {
+		return false
+	}
+	muHandle = h
+	return true
+}
+
+// releaseSingleInstance 释放互斥体（进程退出也会自动释放）。
+func releaseSingleInstance() {
+	if muHandle != 0 {
+		kernel32 := syscall.NewLazyDLL("kernel32.dll")
+		kernel32.NewProc("ReleaseMutex").Call(muHandle)
+		kernel32.NewProc("CloseHandle").Call(muHandle)
+		muHandle = 0
+	}
+}
+
+// readServerPort 读取已运行实例记录的端口文件；缺省 3000。
+func readServerPort() int {
+	exe, err := os.Executable()
+	if err != nil {
+		return 3000
+	}
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(exe), ".pet_server.port"))
+	if err != nil {
+		return 3000
+	}
+	n := 0
+	for _, ch := range strings.TrimSpace(string(raw)) {
+		if ch < '0' || ch > '9' {
+			return 3000
+		}
+		n = n*10 + int(ch-'0')
+	}
+	if n <= 0 || n > 65535 {
+		return 3000
+	}
+	return n
+}
+

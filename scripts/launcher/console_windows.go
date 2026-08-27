@@ -2,7 +2,10 @@
 
 package main
 
-import "syscall"
+import (
+	"os/exec"
+	"syscall"
+)
 
 // initConsole switches the console codepage to UTF-8 so that box-drawing
 // Unicode characters (═ ║ ╔ ╗ ╚ ╝) render correctly regardless of the user's
@@ -26,4 +29,11 @@ func minToBackground() {
 		user32.NewProc("ShowWindow").Call(hwnd, 8) // SW_SHOWNA
 		user32.NewProc("SetWindowPos").Call(hwnd, 1 /*HWND_BOTTOM*/, 0, 0, 0, 0, 0x0001|0x0002|0x0010) // SWP_NOMOVE|NOSIZE|NOACTIVATE
 	}
+}
+
+// noNewConsole 为子进程设置属性：不创建新控制台、不显示新窗口。
+// 子进程默认继承父控制台；此标志仅防御边缘场景（如 npm.cmd 调用链）突然弹出新终端。
+func noNewConsole(cmd *exec.Cmd) {
+	// CREATE_NO_WINDOW = 0x08000000（父进程已有控制台时无副作用）
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
 }

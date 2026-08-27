@@ -880,7 +880,7 @@ async function changeTeacherPassword(): Promise<void> {
 async function checkUpdate(): Promise<void> {
   try {
     const r = await api<{ currentVersion: string; latestVersion: string; hasUpdate: boolean; note: string }>('/updates/check');
-    updateInfo.value = r.hasUpdate ? `发现新版本 ${r.latestVersion}，请到 Gitee 下载` : `当前 ${r.currentVersion}，已是最新`;
+    updateInfo.value = r.hasUpdate ? `发现新版本 ${r.latestVersion}，可到准备界面一键安装，或到 GitHub Releases 下载` : `当前 ${r.currentVersion}，已是最新`;
   } catch (e) {
     updateInfo.value = (e as Error).message;
   }

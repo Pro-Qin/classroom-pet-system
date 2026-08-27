@@ -531,12 +531,16 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
     }
     const { sources, highest } = await checkAllSources();
     const hasUpdate = !!highest && compareVersions(highest, APP_VERSION) > 0;
+    // downloadUrl：优先 GitHub 镜像直链（ghfast 等反代，国内可达），其次 GitHub 直链
+    const dl = sources.find((x) => x.kind === 'github-mirror' && x.reachable && x.assetUrl)
+      || sources.find((x) => x.kind === 'github' && x.reachable && x.assetUrl);
     res.json({
       enabled: true,
       source: effectiveGiteeRepo(cfg),
       currentVersion: APP_VERSION,
       hasUpdate,
       latestVersion: highest ?? APP_VERSION,
+      downloadUrl: hasUpdate ? (dl?.assetUrl ?? '') : '',
       note: highest && hasUpdate ? `发现新版本 ${highest}` : (highest ? '已是最新版本' : '更新源暂无版本信息'),
       sources: sources.map((s) => ({ id: s.id, label: s.label, kind: s.kind, latestVersion: s.latestVersion, assetName: s.assetName, assetUrl: s.assetUrl, reachable: s.reachable })),
     });

@@ -85,6 +85,15 @@ async function load(): Promise<void> {
 
 async function saveRule(r: Rule): Promise<void> {
   try {
+    // 同一规则内同属性只允许一条条件：防止"心情>90 与 心情<45 并存"这类互斥规则
+    const attrSeen = new Set<string>();
+    for (const c of condOf(r)) {
+      if (attrSeen.has(c.attr)) {
+        toast(`同一规则里「${c.attr}」重复出现，请合并为一条条件`, 'error');
+        return;
+      }
+      attrSeen.add(c.attr);
+    }
     await api('/admin/state-rules/' + r.id, {
       method: 'PUT',
       body: JSON.stringify({ label: r.label, conditions: condOf(r), color: r.color }),

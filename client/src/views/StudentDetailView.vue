@@ -31,7 +31,7 @@
           <div class="mt-5 flex items-end justify-between rounded-2xl bg-gradient-to-r from-amber-500/15 to-orange-500/10 border border-amber-400/25 px-4 py-3">
             <div>
               <p class="text-xs text-amber-200/70 flex items-center gap-1"><Coins class="w-3.5 h-3.5" /> 我的{{ pointsUnit }}</p>
-              <p class="text-4xl font-black text-amber-300 points-glow leading-tight">{{ detail.student.points }}</p>
+              <p class="text-4xl font-black text-amber-300 points-glow leading-tight">{{ fmtInt(detail.student.points) }}</p>
             </div>
             <Trophy class="w-8 h-8 text-amber-300/60" />
           </div>
@@ -62,9 +62,7 @@
             <h2 class="font-bold text-indigo-50 flex items-center gap-2">
               <PawPrint class="w-5 h-5 text-fuchsia-300" /> {{ detail.student.name }} 的宠物
             </h2>
-            <span v-if="pet" class="pill" :style="{ background: pet.state.color + '33', color: pet.state.color }">
-              <component :is="iconOf(pet.state.icon)" class="w-3.5 h-3.5" /> {{ pet.state.label }}
-            </span>
+
           </div>
 
           <template v-if="pet">
@@ -303,7 +301,7 @@
                 class="w-10 text-center font-bold text-sm shrink-0"
                 :class="h.delta >= 0 ? 'text-emerald-300' : 'text-rose-300'"
               >
-                {{ h.delta >= 0 ? '+' : '' }}{{ h.delta }}
+                {{ h.delta >= 0 ? '+' : '' }}{{ fmtInt(h.delta) }}
               </span>
               <div class="flex-1 min-w-0">
                 <p class="text-sm text-indigo-100 truncate">{{ h.reason || '（无备注）' }}</p>
@@ -387,7 +385,7 @@ import {
 } from 'lucide-vue-next';
 import { api, upload } from '../api';
 import { toast } from '../composables/toast';
-import { fmtExp } from '../utils/format';
+import { fmtExp, fmtInt } from '../utils/format';
 import { pick, vibe } from '../composables/useCopyStyle';
 import { cropToCircleBlob } from '../utils/avatar';
 import { useSettings } from '../composables/settings';
@@ -593,8 +591,9 @@ function balanceOf(id: string): number {
   const base = detail.value?.student.points ?? 0;
   const i = h.findIndex((x) => x.id === id);
   if (i < 0) return base;
+  // 该笔交易之后的余额：base 减去「比它更新」的所有流水
   let sum = 0;
-  for (let k = 0; k <= i; k++) sum += h[k].delta;
+  for (let k = 0; k < i; k++) sum += h[k].delta;
   return base - sum;
 }
 function scrollToHistory(): void {
@@ -666,20 +665,26 @@ async function loadRankBase(): Promise<void> {
   }
 }
 
+const buyingId = ref('');
+
 async function buy(item: { id: string }): Promise<void> {
+  if (buyingId.value) return;
+  buyingId.value = item.id;
   try {
     const r = await api<{ ok: boolean; cost: number }>(`/students/${studentId}/pet/buy-item`, {
       method: 'POST',
       body: JSON.stringify({ itemId: item.id }),
     });
-    toast(`购买成功，消耗 ${r.cost} ${pointsUnit.value}`, 'success');
+    toast(`购买成功，消耗 ${fmtExp(r.cost)} ${pointsUnit.value}`, 'success');
     await load();
-  } catch (e) {
-    toast((e as Error).message, 'error');
+  } finally {
+    buyingId.value = '';
   }
 }
 
 async function buyAndUse(item: { id: string; name: string }): Promise<void> {
+  if (buyingId.value) return;
+  buyingId.value = item.id;
   try {
     const r = await api<{ ok: boolean; cost: number }>(`/students/${studentId}/pet/buy-item`, {
       method: 'POST',
@@ -689,10 +694,12 @@ async function buyAndUse(item: { id: string; name: string }): Promise<void> {
       method: 'POST',
       body: JSON.stringify({ itemId: item.id }),
     });
-    toast('已购买并使用「' + item.name + '」（消耗 ' + r.cost + ' ' + pointsUnit.value + '）', 'success');
+    toast('已购买并使用「' + item.name + '」（消耗 ' + fmtExp(r.cost) + ' ' + pointsUnit.value + '）', 'success');
     await load();
   } catch (e) {
     toast((e as Error).message, 'error');
+  } finally {
+    buyingId.value = '';
   }
 }
 

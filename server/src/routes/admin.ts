@@ -245,6 +245,19 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
     };
     const now = nowIso();
     db()
+    // 同一规则内同属性只允许一条条件（防止"心情>90 与 心情<45"互斥条件并存导致状态判定诡异）
+    const condArr = (typeof conditions === 'string' ? (() => { try { return JSON.parse(conditions || '[]'); } catch { return []; } })() : (conditions ?? [])) as { attr?: string }[];
+    const seenAttrs = new Set<string>();
+    for (const c of condArr) {
+      if (c && typeof c.attr === 'string') {
+        if (seenAttrs.has(c.attr)) {
+          res.status(400).json({ error: `同一规则内「${c.attr}」只能有一条条件` });
+          return;
+        }
+        seenAttrs.add(c.attr);
+      }
+    }
+    db()
       .prepare(
         `UPDATE state_rules SET label=?, conditions=?, icon=?, color=?, sort=?, updated_at=? WHERE id=?`
       )

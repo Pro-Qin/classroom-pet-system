@@ -552,6 +552,7 @@ function onCardClick(s: Student, e: MouseEvent): void {
     const w = Math.min(e.clientX + 8, window.innerWidth - 300);
     const h = Math.min(e.clientY + 8, window.innerHeight - 180);
     gotoPop.value = { x: Math.max(4, w), y: Math.max(4, h), student: s };
+    e.stopPropagation(); // 阻止本次 click 冒泡到 document 监听，否则弹窗打开即被关闭
   }
 }
 function enterStudentSystem(): void {
@@ -797,7 +798,12 @@ async function giveExp(s: Student): Promise<void> {
   if (!s.petId) return;
   const beforeStage = s.petStage ?? 0;
   try {
-    await api(`/pets/${s.petId}/exp`, { method: 'POST', body: JSON.stringify({ amount: Number(expAmount.value) || 0 }) });
+    const amt = Number(expAmount.value);
+    if (!Number.isFinite(amt) || amt <= 0 || Math.abs(amt) > 1_000_000) {
+      toast('经验值需为 0 ~ 100 万之间的正数', 'error');
+      return;
+    }
+    await api(`/pets/${s.petId}/exp`, { method: 'POST', body: JSON.stringify({ amount: amt }) });
     await loadStudents();
     const updated = students.value.find((x) => x.id === s.id);
     const afterStage = updated?.petStage ?? beforeStage;
@@ -948,8 +954,8 @@ onMounted(async () => {
   await Promise.all([loadStudents(), loadPresets(), loadStats(), loadBoard()]);
   // 常用操作记忆：还原上次分值/理由
   try {
-    const d = Number(localStorage.getItem('teacher_last_delta'));
-    if (Number.isFinite(d)) delta.value = d;
+    const rawD = localStorage.getItem('teacher_last_delta');
+    if (rawD !== null && Number.isFinite(Number(rawD))) delta.value = Number(rawD);
     reason.value = localStorage.getItem('teacher_last_reason') ?? '';
   } catch { /* ignore */ }
   document.addEventListener('click', onDocClick);

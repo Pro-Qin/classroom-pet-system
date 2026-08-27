@@ -12,6 +12,7 @@ import { registerStudentRoutes } from './routes/students.js';
 import { registerTeacherRoutes } from './routes/teacher.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerSyncRoutes } from './routes/sync.js';
+import { startSchedulers } from './services/scheduler.js';
 import { requireAuth } from './middleware.js';
 import { logger } from './utils/logger.js';
 
@@ -153,6 +154,8 @@ if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     logger.info(`server ready  http://localhost:${PORT}`);
     logger.info(`version ${APP_VERSION}  (health: /api/health)`);
+    // 后台调度：每日凌晨快照 + 低频自动拉取（VITEST/测试环境自动跳过）
+    startSchedulers();
 
     // 启动自检：数据库完整性 / 配置完整性 / 备份目录
     setTimeout(() => {

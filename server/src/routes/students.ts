@@ -23,6 +23,8 @@ import {
 import { getPointHistory, type LeaderboardRow } from '../services/points.js';
 import { isValidImageFile } from '../utils/upload.js';
 import { getActiveSubject, subjectFeatureEnabled } from '../services/subjects.js';
+import { resolvePetDailyMoment } from '../services/pets.js';
+import { uploadAvatarToCloud } from '../services/storage.js';
 
 /** 学生列表卡片（登录页/学生系统共用），公开访问 */
 function listStudents(db: ReturnType<typeof getDb>) {
@@ -110,6 +112,7 @@ function getStudentDetail(db: ReturnType<typeof getDb>, studentId: string) {
       happy: refreshed.happy,
       clean: refreshed.clean,
       state: computeState(refreshed),
+      personality: refreshed.personality ?? null,
       species: species
         ? {
             id: species.id,
@@ -120,6 +123,11 @@ function getStudentDetail(db: ReturnType<typeof getDb>, studentId: string) {
           }
         : null,
     };
+    // 每日小事件（低频、确定性）：命中时把文案随详情返回，前端 toast 展示
+    const moment = resolvePetDailyMoment(db, petRow.id);
+    if (moment) {
+      (pet as { eventText?: string | null }).eventText = moment;
+    }
   }
   const backpack = db
     .prepare(
@@ -351,9 +359,12 @@ export function registerStudentRoutes(app: express.Express, auth: RequestHandler
       return;
     }
     const oldAvatar = petRow.avatar_path;
-    // 先写库，成功后清理旧头像文件（避免 DB 指向已删除文件）
-    const pet = setPetAvatar(db, petRow.id, `/uploads/${req.file.filename}`);
-    if (oldAvatar?.startsWith('/uploads/')) {
+    // 头像上云：可用则存公开 URL，多设备同步后仍可显示；失败回退本地路径
+    const cloudUrl = await uploadAvatarToCloud(req.file.path);
+    const stored = cloudUrl ?? `/uploads/${req.file.filename}`;
+    const pet = setPetAvatar(db, petRow.id, stored);
+    // 本地路径的旧头像才清理本机文件；云端 URL 的旧文件保留在云端
+    if (!cloudUrl && oldAvatar?.startsWith('/uploads/')) {
       const oldFile = path.join(UPLOAD_DIR, path.basename(oldAvatar));
       try {
         fs.unlinkSync(oldFile);
@@ -361,7 +372,7 @@ export function registerStudentRoutes(app: express.Express, auth: RequestHandler
         /* 旧文件不存在则忽略 */
       }
     }
-    res.json({ ok: true, pet, url: `/uploads/${req.file.filename}` });
+    res.json({ ok: true, pet, url: stored, cloud: !!cloudUrl });
   });
 
   // 教师端用：按班级分组列表（带宠物概要）

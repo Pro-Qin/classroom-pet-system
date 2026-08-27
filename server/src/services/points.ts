@@ -6,13 +6,14 @@ export interface PointApplyResult {
   applied: number;
   skipped: string[];
   totalDelta: number;
-  events: { studentId: string; delta: number; newPoints: number }[];
+  events: { studentId: string; delta: number; newPoints: number; eventId: string }[];
 }
 
 /**
  * 给一名或多名学生加/扣积分（事务保证原子性）。
  * 单点与批量走同一入口：studentIds 长度 ≥1。
  * 每次操作都产生一条 point_events 流水（含理由、操作者、时间）。
+ * 返回 eventIds 供前端「撤回」按钮做冲正。
  */
 export function applyPoints(
   db: SqliteDb,
@@ -42,10 +43,11 @@ export function applyPoints(
         continue;
       }
       const newPoints = (db.prepare(`SELECT points FROM students WHERE id = ?`).get(sid) as { points: number }).points;
+      const eventId = newId('ev');
       db.prepare(
         `INSERT INTO point_events (id, student_id, delta, reason, operator, created_at, updated_at) VALUES (?,?,?,?,?,?,?)`
-      ).run(newId('ev'), sid, d, reason, operator, now, now);
-      events.push({ studentId: sid, delta: d, newPoints });
+      ).run(eventId, sid, d, reason, operator, now, now);
+      events.push({ studentId: sid, delta: d, newPoints, eventId });
     }
     return {
       applied: events.length,
@@ -53,6 +55,77 @@ export function applyPoints(
       totalDelta: d * events.length,
       events,
     };
+  });
+}
+
+export interface RevertResult {
+  ok: boolean;
+  reverted: { originalEventId: string; revertEventId: string; studentId: string; delta: number }[];
+  alreadyReverted: string[];
+  missing: string[];
+  error?: string;
+}
+
+/**
+ * 冲正：对既有积分流水生成一条完全相反的补偿流水（追加式审计，绝不改历史）。
+ * 支持一次冲正多条（批量加分逐条撤回）；已被冲正过的流水拒绝二次冲正。
+ */
+export function revertPointEvents(
+  db: SqliteDb,
+  eventIds: string[],
+  operatorLabel = 'teacher'
+): RevertResult {
+  const out: RevertResult = { ok: true, reverted: [], alreadyReverted: [], missing: [] };
+  return tx(db, () => {
+    const now = nowIso();
+    for (const eid of [...new Set(eventIds.filter(Boolean))]) {
+      const orig = db
+        .prepare(`SELECT * FROM point_events WHERE id = ? AND deleted_at IS NULL`)
+        .get(eid) as
+        | { id: string; student_id: string; delta: number; reason: string }
+        | undefined;
+      if (!orig) {
+        out.missing.push(eid);
+        continue;
+      }
+      const dup = db
+        .prepare(`SELECT id FROM point_events WHERE ref_event_id = ? AND deleted_at IS NULL`)
+        .get(orig.id);
+      if (dup) {
+        out.alreadyReverted.push(orig.id);
+        continue;
+      }
+      // 学生可能已被软删：冲正仍需落账，直接改 points（deleted 学生保留历史完整性）
+      const r = db
+        .prepare(`UPDATE students SET points = points - ?, updated_at = ? WHERE id = ?`)
+        .run(orig.delta, now, orig.student_id);
+      if (r.changes === 0) {
+        out.missing.push(orig.id);
+        continue;
+      }
+      const revId = newId('ev');
+      db.prepare(
+        `INSERT INTO point_events (id, student_id, delta, reason, operator, created_at, updated_at, ref_event_id)
+         VALUES (?,?,?,?,?,?,?,?)`
+      ).run(
+        revId,
+        orig.student_id,
+        -orig.delta,
+        `冲正：${orig.reason}`.slice(0, 200),
+        operatorLabel === 'admin' ? 'admin' : 'teacher',
+        now,
+        now,
+        orig.id
+      );
+      out.reverted.push({
+        originalEventId: orig.id,
+        revertEventId: revId,
+        studentId: orig.student_id,
+        delta: -orig.delta,
+      });
+    }
+    if (out.reverted.length === 0 && out.missing.length > 0) out.ok = false;
+    return out;
   });
 }
 

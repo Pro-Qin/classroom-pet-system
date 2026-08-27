@@ -109,6 +109,70 @@ create table if not exists state_rules (
 );
 create index if not exists idx_rules_updated on state_rules (updated_at);
 
+-- ============================================================
+-- v0.4.5 增量：背包 / 道具使用流水纳入同步
+--  - backpacks 重建为带 id 主键的形态（保留数据，幂等可重复执行）
+--  - item_use_logs 补 updated_at / deleted_at（追加式表，updated_at 回填 created_at）
+-- ============================================================
+do $$
+begin
+  if to_regclass('public.backpacks') is null then
+    create table public.backpacks (
+      id text primary key,
+      student_id text not null,
+      item_id text not null,
+      qty bigint not null default 0,
+      updated_at text not null,
+      deleted_at text
+    );
+    create index idx_backpacks_student on public.backpacks (student_id);
+    create index idx_backpacks_updated on public.backpacks (updated_at);
+  elsif not exists (
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='backpacks' and column_name='id'
+  ) then
+    -- 旧复合主键结构 → 带结构重建（保留全部行）
+    alter table public.backpacks rename to backpacks_old;
+    create table public.backpacks (
+      id text primary key,
+      student_id text not null,
+      item_id text not null,
+      qty bigint not null default 0,
+      updated_at text not null,
+      deleted_at text
+    );
+    insert into public.backpacks (id, student_id, item_id, qty, updated_at, deleted_at)
+      select coalesce(student_id || '|' || item_id, gen_random_uuid()::text),
+             student_id, item_id, qty, updated_at, null
+      from public.backpacks_old;
+    drop table public.backpacks_old;
+    create index idx_backpacks_student on public.backpacks (student_id);
+    create index idx_backpacks_updated on public.backpacks (updated_at);
+  end if;
+end $$;
+
+-- 道具使用流水（此前未上云，v0.4.5 纳入同步；旧库补列，新库直接建成）
+create table if not exists item_use_logs (
+  id text primary key,
+  student_id text not null,
+  item_id text not null,
+  effect text not null default '{}',
+  created_at text not null,
+  updated_at text,
+  deleted_at text
+);
+alter table if exists item_use_logs add column if not exists updated_at text;
+alter table if exists item_use_logs add column if not exists deleted_at text;
+update item_use_logs set updated_at = created_at where updated_at is null;
+create index if not exists idx_uselogs_updated on item_use_logs (updated_at);
+
+-- 宠物性格/每日事件列（本机彩蛋扩展列，云端保留占位以便整行 upsert 不缺列）
+alter table pets add column if not exists personality text;
+alter table pets add column if not exists last_event_day text;
+
+-- 积分冲正引用列（v0.4.5）：指向被冲正的原流水
+alter table point_events add column if not exists ref_event_id text;
+
 -- RLS：默认关闭（本系统由服务端 service_role 写入，客户端不直连数据库）
 alter table students enable row level security;
 alter table species enable row level security;
@@ -117,3 +181,5 @@ alter table point_events enable row level security;
 alter table quick_presets enable row level security;
 alter table items enable row level security;
 alter table state_rules enable row level security;
+alter table backpacks enable row level security;
+alter table item_use_logs enable row level security;

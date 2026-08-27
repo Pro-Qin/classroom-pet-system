@@ -12,6 +12,7 @@ import { runSync, resolveConflicts, pushDirty, type ConflictItem, type ConflictC
 import { listSnapshots } from '../db/backup.js';
 import { requireRole } from '../middleware.js';
 import { checkAllSources } from '../services/updateSources.js';
+import { SYNC_TABLES } from '../db/migrate.js';
 
 /** 校验 Supabase 地址：必须 https 且域名以 .supabase.co 结尾（防 SSRF 把 service key 发给任意主机） */
 export function isValidSupabaseUrl(raw: string): boolean {
@@ -239,9 +240,27 @@ export const syncGuards = {
   throttleMs: 6000,
   /** 全局两次手动同步（run）的最小间隔（毫秒，防多设备放大） */
   globalRunGapMs: 8000,
-  /** 待裁决冲突的有效期（毫秒），超时按"已过期"拒绝 */
-  pendingTtlMs: 120_000,
+  /** 待裁决冲突的有效期（毫秒）：放宽到 5 分钟并配合前端倒计时提示 */
+  pendingTtlMs: 300_000,
 };
+
+/** 待裁决冲突按发起 IP 绑定，有效期见 syncGuards.pendingTtlMs（防匿名串改他人冲突裁决） */
+interface PendingSet {
+  ip: string;
+  at: number;
+  conflicts: ConflictItem[];
+}
+
+/** 当前待裁决冲突状态（供健康面板 / 前端倒计时读取） */
+export function getPendingState(): { count: number; deadlineAt: number } | null {
+  if (!pendingRef.pending || pendingRef.pending.conflicts.length === 0) return null;
+  return {
+    count: pendingRef.pending.conflicts.length,
+    deadlineAt: pendingRef.pending.at + syncGuards.pendingTtlMs,
+  };
+}
+
+const pendingRef: { pending: PendingSet | null } = { pending: null };
 
 export function registerSyncRoutes(app: express.Express, _auth: RequestHandler): void {
   // ============================================================
@@ -267,13 +286,7 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
     return false;
   }
 
-  /** 待裁决冲突按发起 IP 绑定，2 分钟内有效（防匿名串改他人冲突裁决） */
-  interface PendingSet {
-    ip: string;
-    at: number;
-    conflicts: ConflictItem[];
-  }
-  let pending: PendingSet | null = null;
+  /** 待裁决冲突有效期与 IP 绑定逻辑见模块级 pendingRef（同 IP、TTL 内方可裁决） */
 
   // 同步状态（准备界面/管理端共用；只读元数据）
   app.get('/api/sync/status', (_req, res) => {
@@ -291,9 +304,50 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
     });
   });
 
-  // 更新检查策略（公开读取）：本设备跳过 / 整库跳过
-  app.get('/api/updates/policy', (_req, res) => {
+  // 同步健康小面板（教师/管理端）：游标、脏行积压、云端可达性、备份、自动拉取与冲突倒计时
+  app.get('/api/sync/health', _auth, requireRole(['teacher', 'admin']), (_req, res) => {
     const cfg = loadConfig();
+    const db = getDb();
+    const meta = db.prepare(`SELECT last_sync_at, last_pull_at, last_push_at FROM sync_meta WHERE id='global'`).get() as
+      | { last_sync_at: string; last_pull_at: string; last_push_at: string }
+      | undefined;
+    const cursor = meta?.last_sync_at ?? '';
+    const dirty: { table: string; count: number }[] = [];
+    let totalDirty = 0;
+    for (const t of SYNC_TABLES) {
+      try {
+        const c = (db.prepare(`SELECT COUNT(*) AS c FROM ${t} WHERE updated_at > ?`).get(cursor) as { c: number }).c;
+        if (c > 0) dirty.push({ table: t, count: c });
+        totalDirty += c;
+      } catch {
+        /* 表未迁移等情况忽略 */
+      }
+    }
+    const snaps = listSnapshots(2);
+    const lastSnap = snaps[0]?.mtime ?? 0;
+    const pending = getPendingState();
+    res.json({
+      mode: cfg.supabaseUrl && cfg.supabaseServiceKey ? 'supabase' : 'mock',
+      configured: !!(cfg.supabaseUrl && cfg.supabaseServiceKey),
+      cursor,
+      lastSyncAt: meta?.last_sync_at ?? '',
+      totalDirty,
+      dirtyTables: dirty,
+      cloudReachable: null as boolean | null, // 由前端调用 sync/test 或由最近一次同步结果推断
+      lastError: getSetting('sync_last_error') || '',
+      autoPullMinutes: cfg.autoPullMinutes ?? 10,
+      autoPullLastAt: Number(getSetting('auto_pull_last_at') ?? '0') || 0,
+      backupCount: listSnapshots(200).length,
+      lastBackupAgeMin: lastSnap ? Math.round((Date.now() - lastSnap) / 60000) : null,
+      conflictPending: pending
+        ? { count: pending.count, deadlineAt: pending.deadlineAt }
+        : null,
+      serverTime: Date.now(),
+    });
+  });
+
+  // 更新检查策略（公开读取）：本设备跳过 / 整库跳过
+  app.get('/api/updates/policy', (_req, res) => {    const cfg = loadConfig();
     res.json({
       deviceDisabled: !!cfg.skipUpdateCheckDevice,
       dbDisabled: getSetting('update_check_db_disabled') === '1',
@@ -324,8 +378,10 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
           .prepare(`SELECT last_sync_at FROM sync_meta WHERE id = 'global'`)
           .get() as { last_sync_at: string } | undefined;
         const pushed = await pushDirty(getTransport(), meta?.last_sync_at ?? '');
+        setSetting('sync_last_error', '');
         res.json({ ok: true, pushed });
       } catch {
+        try { setSetting('sync_last_error', '推送失败（网络或云端配置问题）'); } catch { /* ignore */ }
         res.status(500).json({ error: '推送失败，请稍后重试' });
       }
     })();
@@ -341,14 +397,19 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
     (async () => {
       try {
         const result = await runSync(getTransport());
-        pending = {
+        pendingRef.pending = {
           ip,
           at: Date.now(),
           conflicts: result.conflicts,
         };
         // 不返回 backupFile 绝对路径（防路径泄露），只给是否已备份
         const { backupFile: _bf, ...safe } = result;
-        res.json({ ...safe, backup: !!_bf });
+        // 倒计时提示：前端据此显示"请在 X 分钟内完成裁决"
+        const withDeadline =
+          result.conflicts.length > 0
+            ? { ...safe, resolveDeadline: Date.now() + syncGuards.pendingTtlMs, pendingTtlMs: syncGuards.pendingTtlMs }
+            : safe;
+        res.json({ ...withDeadline, backup: !!_bf });
         // 异地备份（best-effort，不阻塞响应）
         uploadBackupToStorage()
           .then((u) => {
@@ -357,6 +418,7 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
           .catch(() => {});
       } catch (e) {
         const msg = (e as Error).message ?? String(e);
+        try { setSetting('sync_last_error', msg.slice(0, 300)); } catch { /* ignore */ }
         console.error('[sync] runSync 失败:', msg);
         if (/Could not find the table/.test(msg)) {
           res.status(500).json({
@@ -387,16 +449,17 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
       return;
     }
     const { choices } = (req.body ?? {}) as { choices?: Record<string, ConflictChoice> };
-    if (!pending || pending.ip !== ip || Date.now() - pending.at > syncGuards.pendingTtlMs) {
+    const p = pendingRef.pending;
+    if (!p || p.ip !== ip || Date.now() - p.at > syncGuards.pendingTtlMs) {
       res.status(400).json({ error: '没有待裁决的冲突（或已过期）' });
       return;
     }
-    if (pending.conflicts.length === 0) {
+    if (p.conflicts.length === 0) {
       res.status(400).json({ error: '没有待裁决的冲突' });
       return;
     }
     // 每个冲突都必须显式选择，防"空请求 = 全部按 local 覆盖云端"
-    for (const c of pending.conflicts) {
+    for (const c of p.conflicts) {
       const key = `${c.table}:${c.id}`;
       const v = choices?.[key];
       if (v !== 'local' && v !== 'cloud') {
@@ -404,11 +467,11 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
         return;
       }
     }
-    const toResolve = pending.conflicts;
+    const toResolve = p.conflicts;
     (async () => {
       try {
         const result = await resolveConflicts(getTransport(), toResolve, choices ?? {});
-        pending = null;
+        pendingRef.pending = null;
         res.json(result);
       } catch {
         console.error('[sync] resolveConflicts 失败');

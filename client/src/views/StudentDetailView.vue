@@ -647,8 +647,11 @@ const fmtTime = (s: string): string => new Date(s).toLocaleString('zh-CN', { hou
 
 async function load(): Promise<void> {
   try {
-    detail.value = await api<Detail>(`/students/${studentId}`);
+    detail.value = await api<Detail & { pet?: { eventText?: string | null } }>(`/students/${studentId}`);
     if (!detail.value.pet && speciesList.value.length === 0) await loadSpecies();
+    // 宠物今日小事件（低频、确定性）：命中时以 toast 呈现彩蛋
+    const ev = (detail.value as { pet?: { eventText?: string | null } }).pet?.eventText;
+    if (ev) setTimeout(() => toast(ev, 'success'), 600);
   } catch (e) {
     loadError.value = (e as Error).message;
   }

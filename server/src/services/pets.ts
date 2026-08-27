@@ -13,6 +13,8 @@ export interface PetRow {
   clean: number;
   last_tick_at: string;
   updated_at: string;
+  personality?: string | null;
+  last_event_day?: string | null;
 }
 
 export interface StateResult {
@@ -249,8 +251,8 @@ export function useItem(db: SqliteDb, studentId: string, itemId: string): UseIte
       `UPDATE backpacks SET qty = qty - 1, updated_at = ? WHERE student_id = ? AND item_id = ?`
     ).run(now, studentId, itemId);
     db.prepare(
-      `INSERT INTO item_use_logs (id, student_id, item_id, effect, created_at) VALUES (?,?,?,?,?)`
-    ).run(newId('use'), studentId, itemId, JSON.stringify(effect), now);
+      `INSERT INTO item_use_logs (id, student_id, item_id, effect, created_at, updated_at) VALUES (?,?,?,?,?,?)`
+    ).run(newId('use'), studentId, itemId, JSON.stringify(effect), now, now);
 
     const newPet = db
       .prepare(`SELECT * FROM pets WHERE id = ?`)
@@ -301,9 +303,9 @@ export function buyItem(db: SqliteDb, studentId: string, itemId: string): BuyIte
       now
     );
     db.prepare(
-      `INSERT INTO backpacks (student_id, item_id, qty, updated_at) VALUES (?,?,1,?)
+      `INSERT INTO backpacks (id, student_id, item_id, qty, updated_at) VALUES (?,?,?,1,?)
        ON CONFLICT(student_id, item_id) DO UPDATE SET qty = qty + 1, updated_at = excluded.updated_at`
-    ).run(studentId, itemId, now);
+    ).run(`${studentId}|${itemId}`, studentId, itemId, now);
     return { ok: true, cost: item.cost, points: newPoints, qty: 1 };
   });
 }
@@ -377,4 +379,95 @@ export function setPetAvatar(db: SqliteDb, petId: string, avatarPath: string): P
   const now = nowIso();
   db.prepare(`UPDATE pets SET avatar_path = ?, updated_at = ? WHERE id = ?`).run(avatarPath, now, petId);
   return db.prepare(`SELECT * FROM pets WHERE id = ?`).get(petId) as unknown as PetRow;
+}
+
+/* ============================================================
+ * 宠物性格与每日小事件
+ * 设计原则：确定性（同一天同一只宠结果固定）、低频（每天至多 1 次、
+ * 命中率约 18%）、效果极轻（±2~5），不打扰短时长的使用节奏。
+ * ============================================================ */
+
+export const PERSONALITIES = [
+  { key: 'lively', label: '活泼', emoji: '🌤️', desc: '精力充沛，爱凑热闹' },
+  { key: 'lazy', label: '慵懒', emoji: '🌙', desc: '能躺着绝不站着' },
+  { key: 'greedy', label: '贪吃', emoji: '🍢', desc: '对食物毫无抵抗力' },
+  { key: 'cool', label: '高冷', emoji: '🧊', desc: '外冷内热的小傲娇' },
+] as const;
+
+/** 每日事件池：按性格分组，效果均为小幅增益 */
+const DAILY_EVENTS: Record<string, { text: string; attr: 'health' | 'hungry' | 'happy' | 'clean'; add: number; exp: number }[]> = {
+  lively: [
+    { text: '{name}在花坛边打了三个滚，心情大好！', attr: 'happy', add: 3, exp: 2 },
+    { text: '{name}追着自己的尾巴跑了一整圈，运动量达标～', attr: 'health', add: 2, exp: 2 },
+  ],
+  lazy: [
+    { text: '{name}晒着太阳睡了个午觉，醒来精神满满。', attr: 'health', add: 2, exp: 1 },
+    { text: '{name}翻了个身继续睡……但梦里也在长经验！', attr: 'happy', add: 2, exp: 3 },
+  ],
+  greedy: [
+    { text: '{name}偷偷闻到了食堂的香味，饱食度小幅回升～', attr: 'hungry', add: 4, exp: 1 },
+    { text: '{name}捡到了一颗掉落的水果糖，开心地叼走了。', attr: 'happy', add: 3, exp: 2 },
+  ],
+  cool: [
+    { text: '{name}远远看了主人一眼，尾巴悄悄摇了一下。', attr: 'happy', add: 1, exp: 5 },
+    { text: '{name}安静地擦拭自己的爪子，洁净值提升。', attr: 'clean', add: 4, exp: 1 },
+  ],
+};
+
+function hashStr(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** 确定性伪随机（mulberry32）：同一输入序列恒定，保证结果可复现 */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const EVENT_CHANCE = 0.18; // 每天约 18% 的宠物会遇到一次小事件
+
+/**
+ * 学生查看宠物详情时调用：按需分配性格并掷当日事件。
+ * 返回今日事件文案（没有则 null）。
+ */
+export function resolvePetDailyMoment(db: SqliteDb, petId: string): string | null {
+  const pet = db.prepare(`SELECT * FROM pets WHERE id = ? AND deleted_at IS NULL`).get(petId) as
+    | (PetRow & { personality?: string | null; last_event_day?: string | null })
+    | undefined;
+  if (!pet) return null;
+
+  const today = nowIso().slice(0, 10);
+  const rng = mulberry32(hashStr(`${pet.id}:${today}`));
+
+  // 性格未分配：按宠物 id 确定性分配一次
+  if (!pet.personality) {
+    const chosen = PERSONALITIES[hashStr(pet.id) % PERSONALITIES.length];
+    db.prepare(`UPDATE pets SET personality = ? WHERE id = ?`).run(chosen.key, pet.id);
+    pet.personality = chosen.key;
+  }
+
+  // 今日已发生过事件 / 未命中概率 → 静默
+  if ((pet.last_event_day ?? '') === today) return null;
+  if (rng() >= EVENT_CHANCE) return null;
+
+  const pool = DAILY_EVENTS[pet.personality] ?? DAILY_EVENTS.lively;
+  const ev = pool[Math.floor(rng() * pool.length)];
+  const clamp = (v: number): number => Math.max(0, Math.min(100, v));
+  const cur = clamp((pet as unknown as Record<string, number>)[ev.attr]);
+  const now = nowIso();
+  db.prepare(
+    `UPDATE pets SET ${ev.attr} = ?, exp = exp + ?, last_event_day = ?, updated_at = ? WHERE id = ?`
+  ).run(clamp(cur + ev.add), ev.exp, today, now, pet.id);
+  return ev.text.replaceAll('{name}', pet.name);
 }

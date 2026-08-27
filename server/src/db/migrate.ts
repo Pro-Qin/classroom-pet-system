@@ -101,11 +101,24 @@ export const SCHEMA_SQL: string[] = [
   )`,
 
   `CREATE TABLE IF NOT EXISTS backpacks (
+    id TEXT PRIMARY KEY,
     student_id TEXT NOT NULL,
     item_id TEXT NOT NULL,
     qty INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL,
-    PRIMARY KEY (student_id, item_id)
+    deleted_at TEXT
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_backpacks_pair ON backpacks(student_id, item_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_backpacks_student ON backpacks(student_id)`,
+
+  `CREATE TABLE IF NOT EXISTS item_use_logs (
+    id TEXT PRIMARY KEY,
+    student_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    effect TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT,
+    deleted_at TEXT
   )`,
 
   `CREATE TABLE IF NOT EXISTS item_use_logs (
@@ -113,7 +126,9 @@ export const SCHEMA_SQL: string[] = [
     student_id TEXT NOT NULL,
     item_id TEXT NOT NULL,
     effect TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    updated_at TEXT,
+    deleted_at TEXT
   )`,
 
   `CREATE TABLE IF NOT EXISTS state_rules (
@@ -171,7 +186,9 @@ export const SCHEMA_SQL: string[] = [
   )`,
 ];
 
-/** 需要参与云端同步的表（含 updated_at / deleted_at 列） */
+/** 需要参与云端同步的表（含 updated_at / deleted_at 列）。
+ *  注意顺序：被引用表在前（students → species → pets），
+ *  backpacks / item_use_logs 追加在末尾。 */
 export const SYNC_TABLES = [
   'students',
   'species',
@@ -180,6 +197,8 @@ export const SYNC_TABLES = [
   'quick_presets',
   'items',
   'state_rules',
+  'backpacks',
+  'item_use_logs',
 ] as const;
 
 export function migrate(db?: SqliteDb): void {
@@ -198,6 +217,70 @@ export function migrate(db?: SqliteDb): void {
   } catch {
     /* 列已存在 */
   }
+
+  // 幂等增量迁移：point_events 增加 ref_event_id（冲正引用原流水）
+  try {
+    d.exec(`ALTER TABLE point_events ADD COLUMN ref_event_id TEXT`);
+  } catch {
+    /* 列已存在 */
+  }
+
+  // 幂等增量迁移：pets 增加性格/每日事件列（本机彩蛋数据，不入云同步面）
+  try {
+    d.exec(`ALTER TABLE pets ADD COLUMN personality TEXT`);
+  } catch {
+    /* 列已存在 */
+  }
+  try {
+    d.exec(`ALTER TABLE pets ADD COLUMN last_event_day TEXT`);
+  } catch {
+    /* 列已存在 */
+  }
+
+  // 幂等增量迁移：item_use_logs 补同步所需时间戳列（追加式表，updated_at 回填 created_at）
+  try {
+    d.exec(`ALTER TABLE item_use_logs ADD COLUMN updated_at TEXT`);
+  } catch {
+    /* 列已存在 */
+  }
+  try {
+    d.exec(`ALTER TABLE item_use_logs ADD COLUMN deleted_at TEXT`);
+  } catch {
+    /* 列已存在 */
+  }
+  d.exec(`UPDATE item_use_logs SET updated_at = COALESCE(updated_at, created_at)`);
+
+  // 幂等增量迁移：backpacks 重建为带 id 主键的同步形态（兼容旧的复合主键结构）
+  const bpCols = d.prepare(`PRAGMA table_info(backpacks)`).all() as { name: string }[];
+  if (!bpCols.some((c) => c.name === 'id')) {
+    d.exec(`
+      CREATE TABLE backpacks_new (
+        id TEXT PRIMARY KEY,
+        student_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        qty INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+      );
+      INSERT OR REPLACE INTO backpacks_new (id, student_id, item_id, qty, updated_at)
+        SELECT student_id || '|' || item_id, student_id, item_id, qty, updated_at FROM backpacks;
+      DROP TABLE backpacks;
+      ALTER TABLE backpacks_new RENAME TO backpacks;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_backpacks_pair ON backpacks(student_id, item_id);
+      CREATE INDEX IF NOT EXISTS idx_backpacks_student ON backpacks(student_id);
+    `);
+  }
+  // 重建后兜底：确保所有行都有 id（异常中断的重建）
+  d.exec(`UPDATE backpacks SET id = student_id || '|' || item_id WHERE id IS NULL`);
+
+  // 同步游标比较用的辅助索引（脏行查询免全表扫描）
+  d.exec(`CREATE INDEX IF NOT EXISTS idx_students_updated ON students(updated_at)`);
+  d.exec(`CREATE INDEX IF NOT EXISTS idx_pets_updated ON pets(updated_at)`);
+  d.exec(`CREATE INDEX IF NOT EXISTS idx_presets_updated ON quick_presets(updated_at)`);
+  d.exec(`CREATE INDEX IF NOT EXISTS idx_items_updated ON items(updated_at)`);
+  d.exec(`CREATE INDEX IF NOT EXISTS idx_backpacks_updated ON backpacks(updated_at)`);
+  d.exec(`CREATE INDEX IF NOT EXISTS idx_uselogs_updated ON item_use_logs(updated_at)`);
+
   d.prepare(
     `INSERT OR IGNORE INTO migrations (id, name, applied_at) VALUES (1, 'schema_v1', ?)`
   ).run(nowIso());

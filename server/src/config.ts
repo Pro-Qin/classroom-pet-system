@@ -11,7 +11,7 @@ export const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 export const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 export const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 export const DB_FILE = path.join(DATA_DIR, 'pet.db');
-export const APP_VERSION = '0.4.5';
+export const APP_VERSION = '0.4.6';
 /** 默认（锁定）的 Gitee 更新源：管理端不可修改，仅支持此仓库 */
 export const DEFAULT_GITEE_REPO = 'https://gitee.com/am-zzq/classroom-pet-system';
 
@@ -35,6 +35,8 @@ export interface AppConfig {
   uiStyle: UiStyleConfig;
   /** 后台进程失联心跳超时（秒）：默认 120（2 分钟），管理端可改。 */
   heartbeatTimeoutSec: number;
+  /** 自动拉取云端增量的间隔（分钟）：0=关闭，默认 10。 */
+  autoPullMinutes: number;
 }
 
 /** 单界面风格：formal=正式（默认），playful=俏皮（颜文字萌系）。 */
@@ -69,6 +71,7 @@ const DEFAULTS: AppConfig = {
   skipUpdateCheckDevice: false,
   uiStyle: DEFAULT_UI_STYLE,
   heartbeatTimeoutSec: 120,
+  autoPullMinutes: 10,
 };
 
 /** 解析某一界面最终生效的风格（formal / playful）。 */

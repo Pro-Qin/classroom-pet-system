@@ -465,6 +465,8 @@
         <LogOut class="w-5 h-5" /> 退出登录
       </button>
     </div>
+
+    <UndoButton />
   </div>
 </template>
 
@@ -480,6 +482,8 @@ import RulesManager from '../components/RulesManager.vue';
 import PetsLevelManager from '../components/PetsLevelManager.vue';
 import { api, clearAuth } from '../api';
 import { toast } from '../composables/toast';
+import { pushUndoable } from '../composables/undo';
+import UndoButton from '../components/UndoButton.vue';
 import { useSettings } from '../composables/settings';
 import { useFrostHeader } from '../composables/useFrostHeader';
 
@@ -681,20 +685,26 @@ async function applyPoints(): Promise<void> {
     return;
   }
   try {
-    const r = await api<{ applied: number; totalDelta: number }>('/points', {
+    const targetIds = [...selected];
+    const r = await api<{ applied: number; totalDelta: number; events?: { eventId: string; studentId: string; delta: number; newPoints: number }[] }>('/points', {
       method: 'POST',
-      body: JSON.stringify({ studentIds: [...selected], delta: delta.value, reason: reason.value.trim() }),
+      body: JSON.stringify({ studentIds: targetIds, delta: delta.value, reason: reason.value.trim() }),
     });
     toast(`已对 ${r.applied} 名学生${delta.value >= 0 ? '加' : '扣'} ${Math.abs(delta.value)} 分`, 'success');
+    // 撤回按钮：记录本次产生的流水 id，底部右侧按提示冲正
+    const ids = (r.events ?? []).map((e) => e.eventId);
+    if (ids.length > 0) {
+      const label =
+        r.applied === 1
+          ? `${students.value.find((s) => s.id === r.events![0].studentId)?.name ?? '该学生'}`
+          : `${r.applied} 名学生`;
+      pushUndoable(`${label} ${delta.value >= 0 ? '+' : '-'}${Math.abs(delta.value)}`, ids);
+    }
     // 记住常用操作（分值/理由），下次进入自动还原
     try {
       localStorage.setItem('teacher_last_delta', String(delta.value));
       localStorage.setItem('teacher_last_reason', reason.value || '');
     } catch { /* ignore */ }
-    selected.clear();
-    reason.value = '';
-    delta.value = 5;
-    await Promise.all([loadStudents(), loadStats(), loadBoard()]);
     selected.clear();
     reason.value = '';
     delta.value = 5;

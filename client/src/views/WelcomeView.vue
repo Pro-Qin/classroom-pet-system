@@ -146,6 +146,15 @@
         </div>
       </div>
     </div>
+
+    <!-- 统一配置导入对话框（首次导入：仅未初始化时服务端放行） -->
+    <ConfigTransferDialog
+      ref="cfgDlg"
+      mode="import"
+      endpoint="/config/first-import"
+      v-model:open="dlgOpen"
+      @done="onImportDone"
+    />
   </div>
 </template>
 
@@ -177,31 +186,43 @@ const form = reactive({
     subjectFeatures: { points: true, pets: true, shop: true, rank: true, avatar: true },
 });
 
-// 导入配置文件（JSON）：从管理端“配置导出”得到，可快速填充云端/管理员/科目等字段。
+// 统一配置迁移：选择文件后按类别勾选应用；同时用文件内容预填云端连接等表单字段。
+import ConfigTransferDialog from '../components/ConfigTransferDialog.vue';
+const cfgDlg = ref<InstanceType<typeof ConfigTransferDialog> | null>(null);
+const dlgOpen = ref(false);
 const importFile = ref<HTMLInputElement | null>(null);
 function openImport(): void {
   importFile.value?.click();
 }
-function onImportFile(e: Event): void {
+async function onImportFile(e: Event): Promise<void> {
   const file = (e.target as HTMLInputElement).files?.[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const cfg = JSON.parse(String(reader.result ?? ''));
-      if (cfg.supabaseUrl !== undefined) form.supabaseUrl = String(cfg.supabaseUrl);
-      if (cfg.supabaseAnonKey !== undefined) form.supabaseAnonKey = String(cfg.supabaseAnonKey);
-      if (cfg.supabaseServiceKey !== undefined) form.supabaseServiceKey = String(cfg.supabaseServiceKey);
-      if (cfg.adminName !== undefined) form.adminName = String(cfg.adminName);
-      if (cfg.teacherPassword !== undefined) form.teacherPassword = String(cfg.teacherPassword);
-      if (cfg.activeSubject !== undefined) form.subjectName = String(cfg.activeSubject);
-      toast('配置已导入，请确认后继续', 'success');
-    } catch {
-      toast('导入失败：不是有效的 JSON 配置文件', 'error');
+  try {
+    (e.target as HTMLInputElement).value = '';
+    const text = await file.text();
+    // 预填云端连接与基础字段（后续分类导入会在服务端覆盖同类配置）
+    const data = JSON.parse(text) as {
+      data?: {
+        cloud?: { supabaseUrl?: string; supabaseAnonKey?: string; supabaseServiceKey?: string };
+        display?: { adminName?: string };
+        subjects?: { activeSubject?: string };
+      };
+    };
+    if (data.data?.cloud) {
+      form.supabaseUrl = data.data.cloud.supabaseUrl ?? '';
+      form.supabaseAnonKey = data.data.cloud.supabaseAnonKey ?? '';
+      form.supabaseServiceKey = data.data.cloud.supabaseServiceKey ?? '';
     }
-  };
-  reader.readAsText(file);
-  (e.target as HTMLInputElement).value = '';
+    if (data.data?.display?.adminName) form.adminName = data.data.display.adminName;
+    if (data.data?.subjects?.activeSubject) form.subjectName = data.data.subjects.activeSubject;
+    await cfgDlg.value?.show();
+    cfgDlg.value?.loadFromText(text);
+  } catch (err) {
+    toast((err as Error).message || '导入失败', 'error');
+  }
+}
+function onImportDone(): void {
+  toast('所选类别已应用到系统', 'success');
 }
 
 const steps = [

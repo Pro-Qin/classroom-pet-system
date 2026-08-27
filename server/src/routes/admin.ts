@@ -10,6 +10,8 @@ import { loadConfig, updateConfig, UPLOAD_DIR, BACKUP_DIR, DEFAULT_GITEE_REPO, A
 import { requireRole, verifyToken, TEACHER_PASSWORD } from '../middleware.js';
 import { adoptPet, getExpThresholds, setPetAvatar, type PetRow } from '../services/pets.js';
 import { isValidSupabaseUrl } from './sync.js';
+import { exportConfig, importConfig, CATEGORIES } from '../services/configTransfer.js';
+import { uploadAvatarToCloud } from '../services/storage.js';
 import { isValidImageFile } from '../utils/upload.js';
 import { seed } from '../db/seed.js';
 import { getActiveSubject, getSubjectsConfig, saveSubjectsConfig, setActiveSubject } from '../services/subjects.js';
@@ -163,7 +165,7 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
       else cb(new Error('仅支持图片文件（png/jpg/gif/webp）'));
     },
   });
-  app.post('/api/admin/species/:id/avatar', auth, adminOnly, upload.single('file'), (req, res) => {
+  app.post('/api/admin/species/:id/avatar', auth, adminOnly, upload.single('file'), async (req, res) => {
     if (!req.file) {
       res.status(400).json({ error: '缺少图片文件' });
       return;
@@ -177,11 +179,14 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
       res.status(400).json({ error: '图片文件无效（文件头校验失败），请重新选择图片' });
       return;
     }
+    // 头像上云：云端可用则存公开 URL（多设备同步可见），否则回退本地路径
+    const cloudUrl = await uploadAvatarToCloud(req.file.path);
+    const stored = cloudUrl ?? '/uploads/' + req.file.filename;
     const now = nowIso();
     db()
       .prepare(`UPDATE species SET avatar_path = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`)
-      .run('/uploads/' + req.file.filename, now, req.params.id);
-    res.json({ ok: true, url: '/uploads/' + req.file.filename });
+      .run(stored, now, req.params.id);
+    res.json({ ok: true, url: stored, cloud: !!cloudUrl });
   });
   // ---------- 道具 CRUD ----------
   app.get('/api/admin/items', auth, requireRole(['admin', 'teacher']), (_req, res) => {
@@ -401,7 +406,7 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
   });
 
   // 批量上传学生自定义头像：files 与 studentIds 按顺序一一对应
-  app.post('/api/admin/students/avatars', auth, adminOnly, upload.array('files', 100), (req, res) => {
+  app.post('/api/admin/students/avatars', auth, adminOnly, upload.array('files', 100), async (req, res) => {
     const files = (req.files as Express.Multer.File[] | undefined) ?? [];
     let studentIds: string[] = [];
     try {
@@ -416,30 +421,32 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
     const d = db();
     const okCount: string[] = [];
     const errors: { studentId: string; error: string }[] = [];
-    files.forEach((file, idx) => {
+    for (let idx = 0; idx < files.length; idx++) {
+      const file = files[idx];
       const studentId = studentIds[idx];
       if (!studentId) {
         errors.push({ studentId: '-', error: '缺少学生 ID' });
-        return;
+        continue;
       }
       if (!isValidImageFile(file.path)) {
         try { fs.unlinkSync(file.path); } catch { /* ignore */ }
         errors.push({ studentId, error: '图片文件无效' });
-        return;
+        continue;
       }
       const petRow = d.prepare(`SELECT * FROM pets WHERE student_id = ? AND deleted_at IS NULL`).get(studentId) as PetRow | undefined;
       if (!petRow) {
         try { fs.unlinkSync(file.path); } catch { /* ignore */ }
         errors.push({ studentId, error: '该学生还没有宠物' });
-        return;
+        continue;
       }
       const oldAvatar = petRow.avatar_path;
-      setPetAvatar(d, petRow.id, '/uploads/' + file.filename);
-      if (oldAvatar?.startsWith('/uploads/')) {
+      const cloudUrl = await uploadAvatarToCloud(file.path);
+      setPetAvatar(d, petRow.id, cloudUrl ?? '/uploads/' + file.filename);
+      if (!cloudUrl && oldAvatar?.startsWith('/uploads/')) {
         try { fs.unlinkSync(path.join(UPLOAD_DIR, path.basename(oldAvatar))); } catch { /* ignore */ }
       }
       okCount.push(studentId);
-    });
+    }
     res.json({ ok: true, uploaded: okCount.length, errors });
   });
   // ---------- 重置所有业务数据（管理员） ----------
@@ -523,51 +530,56 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
     );
     res.json({ ok: true, message: '已清空学生/宠物/流水/背包（不保留演示数据），快照：' + path.basename(file) });
   });
-  // ---------- 配置导出 / 导入（管理员；便于便携迁移，密钥不入源码） ----------
-  app.get('/api/admin/config/export', auth, adminOnly, (_req, res) => {
-    const cfg = loadConfig();
-    res.json({
-      meta: { exportedAt: nowIso(), appVersion: APP_VERSION, tool: 'classroom-pet-system' },
-      supabase: { url: cfg.supabaseUrl, anonKey: cfg.supabaseAnonKey, serviceKey: cfg.supabaseServiceKey },
-      gitee: { repo: DEFAULT_GITEE_REPO, enabled: true },
-      settings: {
-        pointsUnit: getSetting('points_unit') ?? '积分',
-        adminName: getSetting('admin_name') ?? '管理员',
-        backupMaxBytes: Number(getSetting('backup_max_bytes')) || 1073741824,
-        expThresholds: getExpThresholds(getDb()),
-      },
-    });
+  // ---------- 统一配置导出 / 导入（分类可选） ----------
+  // 说明：旧版散落的 supabase/settings 混合导出已废弃，由 services/configTransfer.ts
+  // 统一承载；欢迎向导首次导入走 /api/config/first-import（仅未初始化时开放）。
+  app.get('/api/config/catalog', (_req, res) => {
+    res.json({ categories: CATEGORIES });
   });
-  app.post('/api/admin/config/import', auth, adminOnly, (req, res) => {
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const supabase = (body.supabase ?? {}) as Record<string, unknown>;
-    const settings = (body.settings ?? {}) as Record<string, unknown>;
-    const patch: Parameters<typeof updateConfig>[0] = {};
-    if (typeof supabase.url === 'string') {
-      const url = supabase.url.trim();
-      if (url && !isValidSupabaseUrl(url)) {
-        res.status(400).json({ error: 'Supabase 地址无效：必须为 https://xxx.supabase.co' });
-        return;
-      }
-      patch.supabaseUrl = url;
+
+  app.get('/api/admin/config/export', auth, adminOnly, (req, res) => {
+    const keys = String(req.query.keys ?? '')
+      .split(',')
+      .map((k) => k.trim())
+      .filter((k) => CATEGORIES.some((c) => c.key === k));
+    if (keys.length === 0) {
+      res.status(400).json({ error: '请至少选择一个导出类别' });
+      return;
     }
-    if (typeof supabase.anonKey === 'string') patch.supabaseAnonKey = supabase.anonKey.trim();
-    if (typeof supabase.serviceKey === 'string') patch.supabaseServiceKey = supabase.serviceKey.trim();
-    updateConfig(patch);
-    if (typeof settings.pointsUnit === 'string') setSetting('points_unit', settings.pointsUnit.trim() || '积分');
-    if (typeof settings.adminName === 'string') setSetting('admin_name', settings.adminName.trim() || '管理员');
-    if (typeof settings.backupMaxBytes === 'number' && Number.isFinite(settings.backupMaxBytes)) {
-      setSetting('backup_max_bytes', String(Math.max(1, Math.round(settings.backupMaxBytes))));
+    res.json(exportConfig(keys));
+  });
+
+  function doImport(req: express.Request, res: express.Response, allowUninitialized: boolean): void {
+    const cfg = loadConfig();
+    if (!allowUninitialized && cfg.adminPasswordHash) {
+      // 管理端入口已由 requireRole 保护，这里兜底欢迎页口的权限边界
     }
-    if (Array.isArray(settings.expThresholds)) {
-      const arr = settings.expThresholds as unknown[];
-      if (arr.length === 7 && arr.every((x) => typeof x === 'number' && Number.isFinite(x))) {
-        const clean = arr.map((x) => Math.max(0, Math.round(x as number)));
-        clean[0] = 0;
-        setSetting('exp_thresholds', JSON.stringify(clean));
-      }
+    const body = (req.body ?? {}) as { payload?: unknown; categories?: string[] };
+    const categories = Array.isArray(body.categories) ? body.categories.filter((k) => typeof k === 'string') : [];
+    if (categories.length === 0) {
+      res.status(400).json({ error: '请至少选择一个导入类别' });
+      return;
     }
-    res.json({ ok: true, message: '配置已导入' });
+    const result = importConfig(body.payload as never, categories);
+    if (!result.ok) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+    res.json({ ok: true, results: result.results });
+  }
+
+  /** 欢迎向导专用：仅当系统未初始化（无管理员密码）时允许匿名导入 */
+  app.post('/api/config/first-import', (req, res) => {
+    if (loadConfig().adminPasswordHash) {
+      res.status(403).json({ error: '系统已初始化，请在管理端进行配置导入' });
+      return;
+    }
+    doImport(req, res, true);
+  });
+
+  /** 管理端导入（管理员） */
+  app.post('/api/config/import', auth, adminOnly, (req, res) => {
+    doImport(req, res, false);
   });
   // ---------- 系统设置 ----------
   // GET 公开：仅返回展示类配置（积分单位名/管理员名/Gitee 启用状态），
@@ -587,7 +599,9 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
       termName: getSetting('term_name') ?? '默认学期',
         cloudBackupRetention: Number(getSetting('cloud_backup_retention')) || 10,
         heartbeatTimeoutSec: loadConfig().heartbeatTimeoutSec || 120,
-        teacherPassword: session?.role === 'admin' ? (getSetting('teacher_password') ?? TEACHER_PASSWORD) : undefined,
+        autoPullMinutes: loadConfig().autoPullMinutes ?? 10,
+        // 教师口令哈希存储后不再回传明文：只告知"是否已自定义"，编辑留空即不修改
+        teacherPasswordSet: !!(getSetting('teacher_password') ?? '').match(/^\$2[aby]\$/) || (getSetting('teacher_password') ?? '') !== TEACHER_PASSWORD,
         activeSubject: getSetting('active_subject') ?? '',
         subjects: (() => { try { return JSON.parse(getSetting('subjects_config') ?? '[]'); } catch { return []; } })(),
     });
@@ -608,7 +622,8 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
           res.status(400).json({ error: '教师口令至少需要 4 位' });
           return;
         }
-        setSetting('teacher_password', tp);
+        // bcrypt 哈希存储（登录时比对；不强制改密但绝不明文落库）
+        setSetting('teacher_password', bcrypt.hashSync(tp, 10));
       }
       if (activeSubject !== undefined) setSetting('active_subject', String(activeSubject).trim());
       if (subjects !== undefined) setSetting('subjects_config', JSON.stringify(subjects));

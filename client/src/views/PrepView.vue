@@ -46,12 +46,15 @@
       <!-- 冲突弹窗 -->
       <div v-if="conflicts.length" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm grid place-items-center p-4">
         <div class="glass w-full max-w-xl p-6 max-h-[80vh] overflow-y-auto">
-          <div class="flex items-center gap-3 mb-4">
+          <div class="flex items-center gap-3 mb-4 flex-wrap">
             <AlertTriangle class="w-7 h-7 text-amber-300" />
             <h2 class="text-lg font-bold text-indigo-50">检测到数据冲突</h2>
+            <span v-if="deadlineRemainSec > 0" class="ml-auto pill bg-amber-500/20 text-amber-200 border border-amber-400/40 !py-1 font-mono text-sm">
+              {{ countdownText }} 后失效
+            </span>
           </div>
           <p class="text-sm text-indigo-200/80 mb-4">
-            以下数据在<strong>本机</strong>与<strong>云端</strong>都被修改过。请选择保留哪一份（未选中的一方会被覆盖）。
+            以下数据在<strong>本机</strong>与<strong>云端</strong>都被修改过。请选择保留哪一份（未选中的一方会被覆盖）。请在倒计时内完成，超时后需重新同步再裁决。
           </p>
           <div class="space-y-3">
             <div
@@ -152,6 +155,7 @@ interface SyncResult {
   conflicts: Conflict[];
   completed: boolean;
   backupFile: string | null;
+  resolveDeadline?: number;
 }
 interface CheckItem {
   key: string;
@@ -175,6 +179,18 @@ const mode = ref('');
 const manualUrl = ref('');
 const latestVersion = ref('');
 const currentVersion = ref('');
+
+/** 冲突裁决倒计时（服务端 deadline；每秒刷新） */
+const deadlineAt = ref(0);
+const nowTick = ref(Date.now());
+setInterval(() => (nowTick.value = Date.now()), 1000);
+const deadlineRemainSec = computed(() =>
+  deadlineAt.value ? Math.max(0, Math.ceil((deadlineAt.value - nowTick.value) / 1000)) : 0
+);
+const countdownText = computed(() => {
+  const s = deadlineRemainSec.value;
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+});
 
 /** 三步骤全部完成 → 顶部 loading 换成对号 */
 const allDone = computed(() => checklist.value.length > 0 && checklist.value.every((i) => i.state === 'done'));
@@ -293,6 +309,7 @@ async function runPrep(): Promise<void> {
   if (syncRes) {
     if (syncRes.conflicts.length > 0) {
       conflicts.value = syncRes.conflicts;
+      deadlineAt.value = syncRes.resolveDeadline ?? 0;
       for (const c of syncRes.conflicts) {
         if (choices[`${c.table}:${c.id}`] === undefined) choices[`${c.table}:${c.id}`] = 'local';
       }

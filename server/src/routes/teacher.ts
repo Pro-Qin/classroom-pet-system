@@ -1,10 +1,11 @@
 import express from 'express';
 import type { Request, RequestHandler } from 'express';
+import bcrypt from 'bcryptjs';
 import { getDb, newId, nowIso } from '../db/connection.js';
-import { applyPoints, getLeaderboard, getPointHistory } from '../services/points.js';
+import { applyPoints, getLeaderboard, getPointHistory, revertPointEvents } from '../services/points.js';
 import { addPetExp, getSpecies, getExpThresholds, DEFAULT_EXP_THRESHOLDS, stageIndex, stageLabelOf, stageLabelsOf, type PetRow } from '../services/pets.js';
 import { setSetting, getSetting } from '../db/settings.js';
-import { requireRole, type Session } from '../middleware.js';
+import { requireRole, TEACHER_PASSWORD as TEACHER_PASSWORD_DEFAULT, type Session } from '../middleware.js';
 import { getActiveSubject, subjectFeatureEnabled } from '../services/subjects.js';
 import * as XLSX from 'xlsx';
 
@@ -12,23 +13,44 @@ export function registerTeacherRoutes(app: express.Express, auth: RequestHandler
   const teacherOnly = requireRole(['teacher', 'admin']);
 
   // 修改教师口令（教师或管理员；教师需提供当前口令，管理员可直接设置）
+  // 存储为 bcrypt 哈希：旧库遗留的明文口令由服务端启动迁移自动升级
   app.post('/api/teacher/password', auth, teacherOnly, (req, res) => {
     const { oldPassword, newPassword } = (req.body ?? {}) as { oldPassword?: string; newPassword?: string };
-    const current = getSetting('teacher_password') ?? '123456';
+    const stored = getSetting('teacher_password') ?? TEACHER_PASSWORD_DEFAULT;
+    const looksHash = /^\$2[aby]\$/.test(stored);
     const session = (req as Request & { session?: Session }).session;
-    if (session?.role !== 'admin' && oldPassword !== current) {
-      res.status(401).json({ error: '当前教师口令错误' });
-      return;
+    if (session?.role !== 'admin') {
+      const oldOk = looksHash ? bcrypt.compareSync(oldPassword ?? '', stored) : oldPassword === stored;
+      if (!oldOk) {
+        res.status(401).json({ error: '当前教师口令错误' });
+        return;
+      }
     }
     const next = String(newPassword ?? '').trim();
     if (next.length < 4) {
       res.status(400).json({ error: '教师口令至少需要 4 位' });
       return;
     }
-    setSetting('teacher_password', next);
+    setSetting('teacher_password', bcrypt.hashSync(next, 10));
     getDb().prepare(`INSERT INTO audit_logs (id, action, detail, created_at) VALUES (?,?,?,?)`)
       .run(newId('aud'), 'TEACHER_PASSWORD_CHANGED', `教师口令已由 ${session?.role ?? 'unknown'} 修改`, nowIso());
     res.json({ ok: true });
+  });
+
+  // 积分冲正：对既有流水生成反向补偿（追加式审计；已被冲正过的拒绝重复）
+  app.post('/api/points/revert', auth, teacherOnly, (req, res) => {
+    const { eventIds } = (req.body ?? {}) as { eventIds?: string[] };
+    if (!Array.isArray(eventIds) || eventIds.length === 0) {
+      res.status(400).json({ error: '请提供要撤回的流水 id' });
+      return;
+    }
+    const session = (req as Request & { session?: Session }).session;
+    const result = revertPointEvents(getDb(), eventIds, session?.role ?? 'teacher');
+    if (!result.ok && result.reverted.length === 0) {
+      res.status(400).json({ ...result, error: '没有可撤回的流水（可能已被撤回或不存在）' });
+      return;
+    }
+    res.json({ ...result, ok: true });
   });
 
   // 快捷理由预设（教师/管理端可读）

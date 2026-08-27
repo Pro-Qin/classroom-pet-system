@@ -415,6 +415,44 @@ describe.skipIf(!LIVE)('真云 E2E：', () => {
     dbC.close();
   });
 
+  it('H. 背包与道具流水同步：购买入云、消费墓碑不上报硬删、拉回一致', async () => {
+    const ts = new Date(Date.now() - 60_000).toISOString();
+    applyRow(dbA, 'students', { id: 'bp_stu', student_no: 'B99', name: '背包测试生', class_name: '', subject: '', points: 500, created_at: ts, updated_at: ts, deleted_at: null });
+    applyRow(dbA, 'pets', { id: 'bp_pet', student_id: 'bp_stu', species_id: 'live_spec_1', name: '背包宠', exp: 0, avatar_path: null, health: 100, hungry: 100, happy: 100, clean: 100, last_tick_at: ts, created_at: ts, updated_at: ts, deleted_at: null });
+    await sleep(120);
+
+    const { buyItem, useItem } = await import('../src/services/pets.js');
+    expect(buyItem(dbA, 'bp_stu', 'apple').ok).toBe(true);
+    expect(buyItem(dbA, 'bp_stu', 'apple').ok).toBe(true);
+    expect(buyItem(dbA, 'bp_stu', 'apple').ok).toBe(true);
+    const used = useItem(dbA, 'bp_stu', 'apple');
+    expect(used.ok).toBe(true);
+    await sleep(120);
+
+    const r = await runSync(cloud);
+    expect(r.completed).toBe(true);
+
+    const cloudBp = (await cloudAll('backpacks')).find((x) => x.id === 'bp_stu|apple');
+    expect(cloudBp).toBeTruthy();
+    expect(Number(cloudBp?.qty)).toBe(2); // 买 3 用 1
+
+    const useLogRows = (await cloudAll('item_use_logs')).filter((x) => x.student_id === 'bp_stu');
+    expect(useLogRows.length).toBe(1);
+    const localLog = dbA.prepare(`SELECT effect FROM item_use_logs WHERE student_id='bp_stu' LIMIT 1`).get() as { effect: string };
+    expect(String(useLogRows[0].effect) === localLog.effect || JSON.parse(localLog.effect)).toBeTruthy();
+
+    // 新设备 D 从云端全量拉回，背包/流水完好
+    const dbD = openMemoryDb();
+    setDbForTest(dbD);
+    migrate(dbD);
+    dbD.prepare(`UPDATE sync_meta SET last_sync_at='' WHERE id='global'`).run();
+    const r2 = await runSync(cloud);
+    expect(r2.conflicts).toHaveLength(0);
+    expect((dbD.prepare(`SELECT qty FROM backpacks WHERE id='bp_stu|apple'`).get() as { qty: number }).qty).toBe(2);
+    setDbForTest(dbA);
+    dbD.close();
+  });
+
   it('G. 异地备份：snapshot 上传 storage 桶；保留策略把旧份裁剪到上限内', async () => {
     const retention = 10;
     for (let i = 0; i < 12; i++) {

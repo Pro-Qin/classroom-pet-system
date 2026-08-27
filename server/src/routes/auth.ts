@@ -7,18 +7,59 @@ import { signToken, verifyToken, TEACHER_PASSWORD } from '../middleware.js';
 import { getTransport, isValidSupabaseUrl } from './sync.js';
 import { runSync } from '../sync/engine.js';
 
-/** 登录失败限流：每 IP 每分钟最多 10 次失败尝试（防爆破） */
-const loginAttempts = new Map<string, number[]>();
-function rateLimited(ip: string): boolean {
-  const now = Date.now();
-  const arr = (loginAttempts.get(ip) ?? []).filter((t) => now - t < 60_000);
-  loginAttempts.set(ip, arr);
-  return arr.length >= 10;
+/**
+ * 教师口令存取（bcrypt 哈希）：
+ *  - 新写入一律 hashSync；读取用 verifyTeacherPassword 比较
+ *  - 旧库遗留的明文口令在首次登录成功后自动升级为哈希（无缝迁移）
+ */
+export function teacherPasswordLooksHash(stored: string): boolean {
+  return /^\$2[aby]\$/.test(stored);
 }
-function recordFail(ip: string): void {
-  const arr = loginAttempts.get(ip) ?? [];
-  arr.push(Date.now());
-  loginAttempts.set(ip, arr);
+
+function verifyTeacherPassword(input: string, stored: string): boolean {
+  if (teacherPasswordLooksHash(stored)) return bcrypt.compareSync(input, stored);
+  return input === stored;
+}
+
+/** 明文 → 哈希一次性升级（登录成功路径调用，幂等） */
+function upgradeTeacherPasswordIfNeeded(stored: string): void {
+  if (!teacherPasswordLooksHash(stored)) {
+    setSetting('teacher_password', bcrypt.hashSync(stored, 10));
+    getDb()
+      .prepare(`INSERT INTO audit_logs (id, action, detail, created_at) VALUES (?,?,?,?)`)
+      .run(newId('aud'), 'TEACHER_PW_MIGRATED', '检测到明文教师口令，已自动升级为 bcrypt 哈希存储', nowIso());
+  }
+}
+
+/**
+ * 登录防爆破：按 IP 记录失败。
+ *  - 连续失败 ≥5 次 → 锁定 5 分钟
+ *  - 锁定期内直接拒绝并提示剩余秒数；登录成功即清零
+ */
+const LOCK_THRESHOLD = 5;
+const LOCK_MS = 5 * 60_000;
+const loginFails = new Map<string, { count: number; lockedUntil: number }>();
+
+function lockRemainingSec(ip: string): number {
+  const rec = loginFails.get(ip);
+  if (!rec) return 0;
+  const left = rec.lockedUntil - Date.now();
+  return left > 0 ? Math.ceil(left / 1000) : 0;
+}
+
+function recordLoginFail(ip: string): number {
+  const rec = loginFails.get(ip) ?? { count: 0, lockedUntil: 0 };
+  rec.count += 1;
+  if (rec.count >= LOCK_THRESHOLD && Date.now() >= rec.lockedUntil) {
+    rec.lockedUntil = Date.now() + LOCK_MS; // 达到阈值再次失败 → 触发/续期锁定
+    rec.count = 0;
+  }
+  loginFails.set(ip, rec);
+  return Math.max(0, LOCK_THRESHOLD - rec.count);
+}
+
+function clearLoginFails(ip: string): void {
+  loginFails.delete(ip);
 }
 
 export function registerAuthRoutes(app: express.Express): void {
@@ -86,7 +127,7 @@ export function registerAuthRoutes(app: express.Express): void {
         res.status(400).json({ error: '教师口令至少需要 4 位' });
         return;
       }
-      setSetting('teacher_password', teacherPw);
+      setSetting('teacher_password', bcrypt.hashSync(teacherPw, 10));
     }
   if (body.subjects !== undefined && Array.isArray(body.subjects)) {
     setSetting('subjects_config', JSON.stringify(body.subjects));
@@ -113,8 +154,9 @@ export function registerAuthRoutes(app: express.Express): void {
   app.post('/api/auth/login', (req, res) => {
     const { role, password } = (req.body ?? {}) as { role?: string; password?: string };
     const ip = req.ip ?? 'unknown';
-    if (rateLimited(ip)) {
-      res.status(429).json({ error: '尝试过于频繁，请稍后再试' });
+    const locked = lockRemainingSec(ip);
+    if (locked > 0) {
+      res.status(429).json({ error: `失败次数过多，已临时锁定，请 ${locked} 秒后再试`, lockedSec: locked });
       return;
     }
     if (role !== 'teacher' && role !== 'admin') {
@@ -122,11 +164,17 @@ export function registerAuthRoutes(app: express.Express): void {
       return;
     }
     if (role === 'teacher') {
-        const teacherPw = getSetting('teacher_password') ?? TEACHER_PASSWORD;
-        if (password !== teacherPw) {
-        res.status(401).json({ error: '教师口令错误' });
+        const stored = getSetting('teacher_password') ?? TEACHER_PASSWORD;
+        if (!password || !verifyTeacherPassword(password, stored)) {
+        const remainTries = recordLoginFail(ip);
+        res.status(401).json({
+          error: remainTries > 0 ? `教师口令错误（还可尝试 ${remainTries} 次）` : '教师口令错误，账号已临时锁定 5 分钟',
+          remainingAttempts: remainTries,
+        });
         return;
       }
+      clearLoginFails(ip);
+      upgradeTeacherPasswordIfNeeded(stored); // 明文 → 哈希无缝升级
       res.json({ token: signToken('teacher'), role: 'teacher', name: '教师' });
       return;
     }
@@ -142,10 +190,16 @@ export function registerAuthRoutes(app: express.Express): void {
     const usedEmergency = password === '114514';
     const ok = (emergencyEnabled && usedEmergency) || bcrypt.compareSync(password ?? '', cfg.adminPasswordHash);
     if (!ok) {
-      recordFail(ip);
-      res.status(401).json({ error: '管理员密码错误' });
+      recordLoginFail(ip);
+      const rec = loginFails.get(ip);
+      const remainTries = rec && Date.now() < rec.lockedUntil ? 0 : Math.max(0, LOCK_THRESHOLD - (rec?.count ?? 0));
+      res.status(401).json({
+        error: remainTries > 0 ? `管理员密码错误（还可尝试 ${remainTries} 次）` : '管理员密码错误，账号已临时锁定 5 分钟',
+        remainingAttempts: remainTries,
+      });
       return;
     }
+    clearLoginFails(ip);
     if (usedEmergency && emergencyEnabled) {
       db.prepare(
         `INSERT INTO audit_logs (id, action, detail, created_at) VALUES (?,?,?,?)`

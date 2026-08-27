@@ -35,16 +35,7 @@
             <div class="rounded-xl bg-white/5 p-3"><p class="text-2xl font-bold text-indigo-50">{{ syncStatus.lastSyncAt ? fmtTime(syncStatus.lastSyncAt) : '未同步' }}</p><p class="text-xs text-indigo-200/60">上次同步</p></div>
           </div>
         </div>
-        <div class="glass p-5">
-          <h3 class="font-bold text-indigo-50 mb-3 flex items-center gap-2"><RefreshCw class="w-5 h-5 text-emerald-300" /> 同步状态</h3>
-          <div class="space-y-2 text-sm text-indigo-200/80">
-            <p>模式：<span class="pill bg-white/10">{{ syncStatus.mode }}</span></p>
-            <button class="btn btn-primary mt-3" :disabled="syncing" @click="runSync">
-              <Loader2 v-if="syncing" class="w-4 h-4 animate-spin" /> 立即同步
-            </button>
-            <p v-if="syncMsg" class="text-xs mt-2" :class="syncMsgType === 'error' ? 'text-rose-300' : 'text-emerald-300'">{{ syncMsg }}</p>
-          </div>
-        </div>
+        <SyncHealthCard />
       </div>
 
       <!-- ============ 学生管理 ============ -->
@@ -80,15 +71,15 @@
             <p class="flex-1 font-medium text-indigo-50 truncate">{{ s.name }}</p>
             <p class="w-16 text-right font-bold text-amber-300">{{ s.points }}</p>
             <button class="btn btn-ghost !py-1 text-xs" @click="editPoints(s)"><PenLine class="w-3.5 h-3.5" /> 改分</button>
-          <div class="rounded-xl bg-white/5 p-4 border border-white/10 mt-5">
-            <p class="font-semibold text-indigo-100 mb-2 flex items-center gap-2"><ImagePlus class="w-4 h-4" /> 批量上传头像</p>
-            <p class="text-xs text-indigo-200/60 mb-2">按学生列表顺序依次选择头像图片，文件数量必须与当前列表学生数一致。</p>
-            <input type="file" multiple accept="image/*" class="hidden" ref="avatarFileRef" @change="uploadAvatars" />
-            <button class="btn btn-ghost !py-2 text-sm" @click="avatarFileRef?.click()"><Upload class="w-4 h-4" /> 选择头像（多选）</button>
-            <span v-if="avatarMsg" class="ml-2 text-xs" :class="avatarMsgType === 'err' ? 'text-rose-300' : 'text-emerald-300'">{{ avatarMsg }}</span>
-          </div>
             <button class="btn btn-danger !py-1 text-xs" @click="delStudent(s)"><Trash2 class="w-3.5 h-3.5" /> 删除</button>
           </div>
+        </div>
+        <div class="rounded-xl bg-white/5 p-4 border border-white/10 mt-5">
+          <p class="font-semibold text-indigo-100 mb-2 flex items-center gap-2"><ImagePlus class="w-4 h-4" /> 批量上传头像</p>
+          <p class="text-xs text-indigo-200/60 mb-2">按学生列表顺序依次选择头像图片，文件数量必须与当前列表学生数一致。云端可用时自动上云，换设备也能显示。</p>
+          <input type="file" multiple accept="image/*" class="hidden" ref="avatarFileRef" @change="uploadAvatars" />
+          <button class="btn btn-ghost !py-2 text-sm" @click="avatarFileRef?.click()"><Upload class="w-4 h-4" /> 选择头像（多选）</button>
+          <span v-if="avatarMsg" class="ml-2 text-xs" :class="avatarMsgType === 'err' ? 'text-rose-300' : 'text-emerald-300'">{{ avatarMsg }}</span>
         </div>
       </div>
 
@@ -167,144 +158,224 @@
       <!-- ============ 宠物等级 ============ -->
       <div v-if="tab === 'pets'"><PetsLevelManager /></div>
 
-      <!-- ============ 设置 ============ -->
-      <div v-if="tab === 'settings'" class="glass p-6 max-w-4xl animate-fadeUp space-y-6">
-        <h3 class="font-bold text-indigo-50 flex items-center gap-2"><Settings2 class="w-5 h-5 text-slate-300" /> 系统设置</h3>
+      <!-- ============ 设置（分区卡片式重排） ============ -->
+      <div v-if="tab === 'settings'" class="animate-fadeUp">
+        <!-- 分区导航：锚点卡片，避免长页面滚动迷路 -->
+        <div class="flex flex-wrap gap-2 mb-4">
+          <button
+            v-for="s in settingsSections"
+            :key="s.id"
+            class="pill !px-3.5 !py-1.5 !text-xs cursor-pointer transition-colors"
+            :class="settingsSection === s.id ? 'bg-emerald-500/25 text-emerald-100 border border-emerald-400/50' : 'bg-white/5 text-indigo-200/70 border border-white/10 hover:bg-white/10'"
+            @click="settingsSection = s.id; scrollToSection(s.id)"
+          >
+            <component :is="s.icon" class="w-3.5 h-3.5" /> {{ s.label }}
+          </button>
+        </div>
 
-        <!-- 基础设置：两列，提高信息密度 -->
-        <div class="grid md:grid-cols-2 gap-x-6 gap-y-4">
-          <div>
-            <label class="label">积分单位名称</label>
-            <input v-model="setForm.pointsUnit" class="input !w-full" placeholder="如：学分 / 星星 / 积分" />
-          </div>
-          <div>
-            <label class="label">管理员名称</label>
-            <input v-model="setForm.adminName" class="input !w-full" />
-          </div>
-          <div>
-            <label class="label">Gitee 更新源（锁定，不可修改）</label>
-            <div class="flex gap-2 items-center">
-              <input :value="'https://gitee.com/am-zzq/classroom-pet-system'" readonly class="input !flex-1 opacity-70" />
-              <span class="pill bg-emerald-500/15 text-emerald-300 shrink-0"><Lock class="w-3 h-3" /> 已锁定</span>
+        <!-- ── 基础信息 ── -->
+        <div v-show="settingsSection === 'basics'" id="sec-basics" class="grid md:grid-cols-2 gap-5 max-w-4xl">
+          <div class="glass p-5 space-y-4">
+            <p class="text-[11px] uppercase tracking-wider text-indigo-200/40">Display</p>
+            <h4 class="font-semibold text-indigo-50 -mt-3">展示与文案</h4>
+            <div>
+              <label class="label">积分单位名称</label>
+              <input v-model="setForm.pointsUnit" class="input !w-full" placeholder="如：学分 / 星星 / 积分" />
+            </div>
+            <div>
+              <label class="label">管理员名称</label>
+              <input v-model="setForm.adminName" class="input !w-full" />
             </div>
           </div>
-          <div>
-            <label class="label">本地备份存储上限（MB，默认 1024）</label>
-            <input v-model.number="setForm.backupMaxMB" type="number" class="input !w-full" min="1" placeholder="1024" />
+          <div class="glass p-5 space-y-3">
+            <p class="text-[11px] uppercase tracking-wider text-indigo-200/40">Vibe</p>
+            <h4 class="font-semibold text-indigo-50 -mt-3">界面文案风格</h4>
+            <div>
+              <span class="text-xs text-indigo-200/60 block mb-1">欢迎 / 准备界面</span>
+              <select v-model="setForm.uiStyle.welcome" class="input !w-full">
+                <option value="global_formal">全局正式（默认）</option>
+                <option value="student_playful">仅学生端俏皮</option>
+                <option value="global_playful">全局俏皮</option>
+              </select>
+            </div>
+            <div>
+              <span class="text-xs text-indigo-200/60 block mb-1">学生界面</span>
+              <select v-model="setForm.uiStyle.student" class="input !w-full">
+                <option value="formal">正式（默认）</option>
+                <option value="playful">俏皮（颜文字萌系）</option>
+              </select>
+            </div>
+            <p class="text-xs text-indigo-200/50">俏皮风格用颜文字萌系口吻；保存后生效。</p>
           </div>
-          <div>
-            <label class="label">浏览器失联后自动停止（秒，默认 120 / 2 分钟）</label>
-            <input v-model.number="setForm.heartbeatTimeoutSec" type="number" class="input !w-full" min="30" max="3600" placeholder="120" />
-            <p class="text-xs text-indigo-200/50 mt-1">浏览器关闭/长时间无心跳超过该秒数，后端自动停止。</p>
+
+          <!-- 科目体系 -->
+          <div class="glass p-5 md:col-span-2">
+            <p class="text-[11px] uppercase tracking-wider text-indigo-200/40">Subjects</p>
+            <div class="flex items-center gap-3 -mt-3 mb-3 flex-wrap">
+              <h4 class="font-semibold text-indigo-50">科目列表与个性化</h4>
+              <div class="ml-auto w-44">
+                <select v-model="setForm.activeSubject" class="input !py-1.5 !text-sm">
+                  <option v-for="s in setForm.subjects" :key="s.name" :value="s.name">{{ s.name }}</option>
+                </select>
+              </div>
+            </div>
+            <div v-for="(s, i) in setForm.subjects" :key="i" class="rounded-xl bg-white/5 border border-white/10 p-3 mb-2 text-sm">
+              <div class="flex flex-wrap items-center gap-2">
+                <input v-model="s.name" class="input !py-1 !text-sm !w-32" />
+                <label class="flex items-center gap-1 text-xs"><input v-model="s.sync" type="checkbox" class="accent-indigo-400" /> 同步</label>
+                <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.points" type="checkbox" class="accent-indigo-400" /> 积分</label>
+                <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.pets" type="checkbox" class="accent-indigo-400" /> 宠物</label>
+                <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.shop" type="checkbox" class="accent-indigo-400" /> 商店</label>
+                <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.rank" type="checkbox" class="accent-indigo-400" /> 排行</label>
+                <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.avatar" type="checkbox" class="accent-indigo-400" /> 头像</label>
+                <button class="ml-auto text-rose-300" @click="removeSubject(i)"><Trash2 class="w-3.5 h-3.5" /></button>
+              </div>
+            </div>
+            <button class="btn btn-ghost !py-2 text-sm" @click="addSubject"><Plus class="w-4 h-4" /> 添加科目</button>
           </div>
-          <div>
-            <label class="label">教师口令（管理员可查看/修改）</label>
+          <div class="md:col-span-2">
+            <button class="btn btn-primary" @click="saveSettings">保存基础与科目设置</button>
+          </div>
+        </div>
+
+        <!-- ── 同步与备份 ── -->
+        <div v-show="settingsSection === 'sync'" id="sec-sync" class="grid md:grid-cols-2 gap-5 max-w-4xl">
+          <div class="glass p-5 space-y-4">
+            <p class="text-[11px] uppercase tracking-wider text-indigo-200/40">Sync & Backup</p>
+            <h4 class="font-semibold text-indigo-50 -mt-3">同步 / 备份参数</h4>
+            <div>
+              <label class="label">自动拉取云端增量（分钟，0=关闭）</label>
+              <input v-model.number="setForm.autoPullMinutes" type="number" class="input !w-full" min="0" max="1440" placeholder="10" />
+              <p class="text-xs text-indigo-200/50 mt-1">后台定时从云端拉取另一台设备的改动。</p>
+            </div>
+            <div>
+              <label class="label">浏览器失联后自动停止（秒）</label>
+              <input v-model.number="setForm.heartbeatTimeoutSec" type="number" class="input !w-full" min="30" max="3600" placeholder="120" />
+            </div>
+            <div>
+              <label class="label">本地备份存储上限（MB）</label>
+              <input v-model.number="setForm.backupMaxMB" type="number" class="input !w-full" min="1" placeholder="1024" />
+            </div>
+            <div>
+              <label class="label">云端备份保留份数</label>
+              <input v-model.number="setForm.cloudBackupRetention" type="number" class="input !w-full" min="1" max="365" placeholder="10" />
+            </div>
+          </div>
+          <div class="glass p-5 space-y-4 self-start">
+            <p class="text-[11px] uppercase tracking-wider text-indigo-200/40">Cloud Config</p>
+            <h4 class="font-semibold text-indigo-50 -mt-3">云端连接（Supabase）</h4>
+            <p class="text-xs text-indigo-200/60">写入需要 Service Role Key（仅保存在本机）。<strong>留空的字段保持不变</strong>。</p>
+            <div>
+              <label class="label">Project URL</label>
+              <input v-model="syncForm.supabaseUrl" class="input" placeholder="https://xxxx.supabase.co" />
+            </div>
+            <div>
+              <label class="label">Anon Key</label>
+              <input v-model="syncForm.supabaseAnonKey" class="input" />
+            </div>
+            <div>
+              <label class="label">Service Role Key</label>
+              <input v-model="syncForm.supabaseServiceKey" type="password" class="input" />
+            </div>
+            <div class="flex gap-2 flex-wrap">
+              <button class="btn btn-primary !py-2 text-sm" @click="saveSyncConfig">保存连接</button>
+              <button class="btn btn-ghost !py-2 text-sm" :disabled="testingSync" @click="testSync">
+                <Loader2 v-if="testingSync" class="w-4 h-4 animate-spin" /> 测试连接
+              </button>
+            </div>
+            <p v-if="testMsg" class="text-xs" :class="testMsgType === 'err' ? 'text-rose-300' : 'text-emerald-300'">{{ testMsg }}</p>
+            <p class="text-xs text-indigo-200/50">当前模式：{{ syncStatus.mode }} ｜ 上次同步：{{ syncStatus.lastSyncAt ? fmtTime(syncStatus.lastSyncAt) : '从未' }}</p>
+          </div>
+          <div class="glass p-5 md:col-span-2 space-y-3">
+            <p class="text-[11px] uppercase tracking-wider text-indigo-200/40">Updates</p>
+            <h4 class="font-semibold text-indigo-50 -mt-3">更新检查策略</h4>
+            <div class="space-y-2 text-sm max-w-md">
+              <label class="flex items-center gap-2 cursor-pointer text-indigo-100">
+                <input type="radio" value="none" v-model="updatePolicy.mode" class="accent-indigo-400" /> 正常检查更新
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-indigo-100">
+                <input type="radio" value="device" v-model="updatePolicy.mode" class="accent-indigo-400" /> 仅此设备开机时不检查更新
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-indigo-100">
+                <input type="radio" value="all" v-model="updatePolicy.mode" class="accent-indigo-400" /> 连接到此数据库的所有设备开机都不检查更新
+              </label>
+              <button class="btn btn-ghost !py-1.5 text-xs" @click="saveUpdatePolicy">保存策略</button>
+              <p v-if="updatePolicyMsg" class="text-xs" :class="updatePolicyMsgType === 'err' ? 'text-rose-300' : 'text-emerald-300'">{{ updatePolicyMsg }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── 安全与口令 ── -->
+        <div v-show="settingsSection === 'security'" id="sec-security" class="grid md:grid-cols-2 gap-5 max-w-4xl">
+          <div class="glass p-5 space-y-4">
+            <p class="text-[11px] uppercase tracking-wider text-indigo-200/40">Teacher</p>
+            <h4 class="font-semibold text-indigo-50 -mt-3">教师口令</h4>
+            <p class="text-xs text-indigo-200/60">{{ setForm.teacherPasswordSet ? '已设置自定义口令（bcrypt 加密存储）。留空则不修改。' : '当前使用默认口令 123456。保存后将以 bcrypt 加密存储。' }}</p>
             <div class="flex gap-2">
-              <input v-model="setForm.teacherPassword" class="input !w-44" placeholder="123456" />
-              <button class="btn btn-ghost !py-2 text-sm" @click="saveTeacherPassword"><KeyRound class="w-4 h-4" /> 保存</button>
+              <input v-model="setForm.teacherPassword" class="input !w-44" placeholder="留空 = 不修改" />
+              <button class="btn btn-ghost !py-2 text-sm shrink-0" @click="saveTeacherPassword"><KeyRound class="w-4 h-4" /> 保存</button>
             </div>
           </div>
-          <div>
-            <label class="label">当前科目</label>
-            <select v-model="setForm.activeSubject" class="input !w-full">
-              <option v-for="s in setForm.subjects" :key="s.name" :value="s.name">{{ s.name }}</option>
-            </select>
+          <div class="glass p-5 space-y-4">
+            <p class="text-[11px] uppercase tracking-wider text-indigo-200/40">Admin</p>
+            <h4 class="font-semibold text-indigo-50 -mt-3">管理员密码</h4>
+            <div class="space-y-2">
+              <input v-model="pwForm.old" type="password" class="input" placeholder="旧密码" />
+              <input v-model="pwForm.next" type="password" class="input" placeholder="新密码（≥4位）" />
+              <button class="btn btn-ghost mt-1" @click="changePw">更新密码</button>
+            </div>
+            <p class="text-xs text-indigo-200/60"><ShieldCheck class="w-3.5 h-3.5 inline text-emerald-300" /> 应急口令开关见下方「数据管理」旁提示；启用时每次使用都会记入审计日志。</p>
           </div>
-          <div>
-            <label class="label">云端备份保留份数（默认 10）</label>
-            <input v-model.number="setForm.cloudBackupRetention" type="number" class="input !w-full" min="1" max="365" placeholder="10" />
+        </div>
+
+        <!-- ── 配置中心 ── -->
+        <div v-show="settingsSection === 'transfer'" id="sec-transfer" class="max-w-4xl">
+          <div class="glass p-6 grid md:grid-cols-2 gap-5">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
+              <Download class="w-6 h-6 text-sky-300" />
+              <h4 class="font-semibold text-indigo-50">导出配置</h4>
+              <p class="text-xs text-indigo-200/60">按类别勾选打包为 JSON 文件。可在同版本设备间迁移预设、道具、科目、系统参数等。</p>
+              <button class="btn btn-ghost !py-2 text-sm" @click="openTransfer('export')"><Download class="w-4 h-4" /> 选择类别导出…</button>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
+              <UploadIcon class="w-6 h-6 text-fuchsia-300" />
+              <h4 class="font-semibold text-indigo-50">导入配置</h4>
+              <p class="text-xs text-indigo-200/60">选择导出文件后按类别勾选应用，未勾选的内容不受影响。</p>
+              <button class="btn btn-ghost !py-2 text-sm" @click="openTransfer('import')"><UploadIcon class="w-4 h-4" /> 从文件导入…</button>
+            </div>
           </div>
-          <div class="rounded-xl bg-white/5 border border-white/10 p-3 space-y-3">
-            <label class="label !mb-0 flex items-center gap-2"><Palette class="w-4 h-4 text-fuchsia-300" /> 界面文案风格（默认正式）</label>
-            <div class="grid grid-cols-1 gap-2">
-              <div>
-                <span class="text-xs text-indigo-200/60 block mb-1">欢迎 / 准备界面</span>
-                <select v-model="setForm.uiStyle.welcome" class="input !w-full">
-                  <option value="global_formal">全局正式（默认）</option>
-                  <option value="student_playful">仅学生端俏皮</option>
-                  <option value="global_playful">全局俏皮</option>
-                </select>
+        </div>
+
+        <!-- ── 数据管理 ── -->
+        <div v-show="settingsSection === 'data'" id="sec-data" class="max-w-4xl space-y-4">
+          <div class="glass p-5 space-y-3">
+            <p class="text-[11px] uppercase tracking-wider text-indigo-200/40">Data</p>
+            <h4 class="font-semibold text-indigo-50 -mt-3">数据操作</h4>
+            <div class="flex flex-wrap gap-2">
+              <button class="btn btn-ghost !py-2 text-sm" @click="exportData"><Download class="w-4 h-4" /> 导出全部数据 (JSON)</button>
+              <button class="btn btn-danger !py-2 text-sm" @click="archiveTerm"><Archive class="w-4 h-4" /> 归档并开始新学期</button>
+              <button class="btn btn-danger !py-2 text-sm" @click="clearData"><Trash2 class="w-4 h-4" /> 清空业务数据</button>
+              <button class="btn btn-danger !py-2 text-sm" @click="resetAll"><Trash2 class="w-4 h-4" /> 重置全部并恢复演示</button>
+            </div>
+            <p v-if="dataMsg" class="text-xs" :class="dataMsgType === 'err' ? 'text-rose-300' : 'text-emerald-300'">{{ dataMsg }}</p>
+            <p class="text-xs text-indigo-200/50">Gitee 更新源：<code class="bg-white/10 px-1 rounded">https://gitee.com/am-zzq/classroom-pet-system</code>（锁定不可修改）</p>
+          </div>
+
+          <details class="glass p-5">
+            <summary class="cursor-pointer font-semibold text-indigo-50">审计日志（最近 20 条）</summary>
+            <div class="mt-3 max-h-48 overflow-y-auto space-y-1 text-xs">
+              <p v-if="auditLogs.length === 0" class="text-indigo-200/50 py-2">暂无记录</p>
+              <div v-for="a in auditLogs" :key="a.id" class="flex items-center gap-2 rounded-lg bg-white/4 px-2.5 py-1.5">
+                <span class="pill bg-indigo-500/15 text-indigo-200 shrink-0">{{ a.action }}</span>
+                <span class="flex-1 text-indigo-200/80 truncate">{{ a.detail }}</span>
+                <span class="text-[10px] text-indigo-200/40 shrink-0">{{ fmtTime(a.created_at) }}</span>
               </div>
-              <div>
-                <span class="text-xs text-indigo-200/60 block mb-1">学生界面</span>
-                <select v-model="setForm.uiStyle.student" class="input !w-full">
-                  <option value="formal">正式（默认）</option>
-                  <option value="playful">俏皮（颜文字萌系）</option>
-                </select>
-              </div>
-              <div>
-                <span class="text-xs text-indigo-200/60 block mb-1">管理界面</span>
-                <select v-model="setForm.uiStyle.admin" class="input !w-full">
-                  <option value="global_formal">全局正式（默认）</option>
-                  <option value="student_playful">仅学生端俏皮</option>
-                  <option value="global_playful">全局俏皮</option>
-                </select>
-              </div>
             </div>
-            <p class="text-xs text-indigo-200/50">俏皮风格用颜文字萌系口吻，仅影响部分文案；保存后生效。</p>
-          </div>
-        </div>
+          </details>
 
-        <!-- 科目列表与个性化 -->
-        <div>
-          <h4 class="font-semibold text-indigo-50 mb-2">科目列表与个性化</h4>
-          <div v-for="(s, i) in setForm.subjects" :key="i" class="rounded-xl bg-white/5 border border-white/10 p-3 mb-2 text-sm">
-            <div class="flex flex-wrap items-center gap-2">
-              <input v-model="s.name" class="input !py-1 !text-sm !w-32" />
-              <label class="flex items-center gap-1 text-xs"><input v-model="s.sync" type="checkbox" class="accent-indigo-400" /> 同步</label>
-              <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.points" type="checkbox" class="accent-indigo-400" /> 积分</label>
-              <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.pets" type="checkbox" class="accent-indigo-400" /> 宠物</label>
-              <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.shop" type="checkbox" class="accent-indigo-400" /> 商店</label>
-              <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.rank" type="checkbox" class="accent-indigo-400" /> 排行</label>
-              <label class="flex items-center gap-1 text-xs"><input v-model="s.enabled.avatar" type="checkbox" class="accent-indigo-400" /> 头像</label>
-              <button class="ml-auto text-rose-300" @click="removeSubject(i)"><Trash2 class="w-3.5 h-3.5" /></button>
-            </div>
-          </div>
-          <button class="btn btn-ghost !py-2 text-sm" @click="addSubject"><Plus class="w-4 h-4" /> 添加科目</button>
-        </div>
-
-        <button class="btn btn-primary" @click="saveSettings">保存设置</button>
-
-        <hr class="border-white/10" />
-        <div>
-          <p class="text-xs text-indigo-200/60 mb-2"><ShieldCheck class="w-3.5 h-3.5 inline text-emerald-300" /> 应急口令 <code class="px-1.5 py-0.5 rounded bg-white/10 text-emerald-300 font-mono">114514</code> 可在上方开关；启用时每次使用都会记入审计日志。</p>
-          <label class="label">修改管理员密码</label>
-          <div class="grid grid-cols-2 gap-2 max-w-md">
-            <input v-model="pwForm.old" type="password" class="input" placeholder="旧密码" />
-            <input v-model="pwForm.next" type="password" class="input" placeholder="新密码（≥4位）" />
-          </div>
-          <button class="btn btn-ghost mt-3" @click="changePw">更新密码</button>
-        </div>
-
-        <hr class="border-white/10" />
-        <div class="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
-          <label class="label">数据导出 / 学期归档</label>
-          <p class="text-xs text-indigo-200/60">导出全部数据（JSON，可用于学期存档或迁移）；归档会先生成带学期名的快照，再清空学生/宠物/流水开始新学期。</p>
-          <div class="flex flex-wrap gap-2">
-            <button class="btn btn-ghost !py-2 text-sm" @click="exportData"><Download class="w-4 h-4" /> 导出全部数据</button>
-            <button class="btn btn-danger !py-2 text-sm" @click="archiveTerm"><Archive class="w-4 h-4" /> 归档并开始新学期</button>
-            <button class="btn btn-danger !py-2 text-sm" @click="clearData"><Trash2 class="w-4 h-4" /> 清空业务数据（不留演示）</button>
-          </div>
-          <p v-if="dataMsg" class="text-xs" :class="dataMsgType === 'err' ? 'text-rose-300' : 'text-emerald-300'">{{ dataMsg }}</p>
-        </div>
-
-        <hr class="border-white/10" />
-        <div class="rounded-xl bg-white/5 border border-white/10 p-4 space-y-2">
-          <label class="label">审计日志（最近 20 条）</label>
-          <div class="max-h-48 overflow-y-auto space-y-1 text-xs">
-            <p v-if="auditLogs.length === 0" class="text-indigo-200/50 py-2">暂无记录</p>
-            <div v-for="a in auditLogs" :key="a.id" class="flex items-center gap-2 rounded-lg bg-white/4 px-2.5 py-1.5">
-              <span class="pill bg-indigo-500/15 text-indigo-200 shrink-0">{{ a.action }}</span>
-              <span class="flex-1 text-indigo-200/80 truncate">{{ a.detail }}</span>
-              <span class="text-[10px] text-indigo-200/40 shrink-0">{{ fmtTime(a.created_at) }}</span>
-            </div>
-          </div>
-        </div>
-
-          <hr class="border-white/10" />
-          <div class="rounded-xl bg-white/5 border border-white/10 p-4 space-y-2">
-            <label class="label">前端错误上报（最近 50 条）</label>
-            <div class="max-h-48 overflow-y-auto space-y-1 text-xs">
+          <details class="glass p-5">
+            <summary class="cursor-pointer font-semibold text-indigo-50">前端错误上报（最近 50 条）</summary>
+            <div class="mt-3 max-h-48 overflow-y-auto space-y-1 text-xs">
               <p v-if="errorReports.length === 0" class="text-indigo-200/50 py-2">暂无上报</p>
               <div v-for="e in errorReports" :key="e.id" class="flex items-start gap-2 rounded-lg bg-white/4 px-2.5 py-1.5">
                 <span class="pill bg-rose-500/15 text-rose-200 shrink-0">{{ e.level }}</span>
@@ -312,75 +383,17 @@
                 <span class="text-[10px] text-indigo-200/40 shrink-0">{{ fmtTime(e.created_at) }}</span>
               </div>
             </div>
-            <button class="btn btn-ghost !py-1.5 text-xs" @click="loadErrors">刷新</button>
-          </div>
-
-        <hr class="border-white/10" />
-        <div class="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
-          <label class="label">更新检查策略</label>
-          <div class="space-y-2 text-sm">
-            <label class="flex items-center gap-2 cursor-pointer text-indigo-100">
-              <input type="radio" value="none" v-model="updatePolicy.mode" class="accent-indigo-400" /> 正常检查更新
-            </label>
-            <label class="flex items-center gap-2 cursor-pointer text-indigo-100">
-              <input type="radio" value="device" v-model="updatePolicy.mode" class="accent-indigo-400" /> 仅此设备开机时不检查更新
-            </label>
-            <label class="flex items-center gap-2 cursor-pointer text-indigo-100">
-              <input type="radio" value="all" v-model="updatePolicy.mode" class="accent-indigo-400" /> 连接到此数据库的所有设备开机都不检查更新
-            </label>
-            <button class="btn btn-ghost !py-1.5 text-xs" @click="saveUpdatePolicy">保存策略</button>
-            <p v-if="updatePolicyMsg" class="text-xs" :class="updatePolicyMsgType === 'err' ? 'text-rose-300' : 'text-emerald-300'">{{ updatePolicyMsg }}</p>
-          </div>
-        </div>
-
-        <hr class="border-white/10" />
-        <div class="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
-          <label class="label">配置导出 / 导入（便携迁移）</label>
-          <p class="text-xs text-indigo-200/60">导出包含 Supabase 连接、积分单位、管理员名称、备份上限与等级要求；不含源码与签名密钥，请妥善保管。</p>
-          <div class="flex flex-wrap gap-2">
-            <button class="btn btn-ghost !py-2 text-sm" @click="exportConfig"><Download class="w-4 h-4" /> 导出配置</button>
-            <label class="btn btn-ghost !py-2 text-sm cursor-pointer"><Upload class="w-4 h-4" /> 导入配置
-              <input type="file" accept=".json,application/json" class="hidden" @change="importConfig" />
-            </label>
-          </div>
-          <p v-if="configMsg" class="text-xs" :class="configMsgType === 'err' ? 'text-rose-300' : 'text-emerald-300'">{{ configMsg }}</p>
-        </div>
-
-        <hr class="border-white/10" />
-        <div class="rounded-xl bg-rose-500/10 border border-rose-400/25 p-4">
-          <label class="label !text-rose-200">重置所有数据</label>
-          <p class="text-xs text-indigo-200/60 mb-3">清空全部学生、宠物、积分流水与背包，并恢复演示数据。此操作不可撤销。</p>
-          <button class="btn btn-danger" @click="resetAll"><Trash2 class="w-4 h-4" /> 重置所有数据</button>
+            <button class="btn btn-ghost !py-1.5 text-xs mt-2" @click="loadErrors">刷新</button>
+          </details>
         </div>
       </div>
 
-      <!-- ============ 同步配置 ============ -->
-      <div v-if="tab === 'sync'" class="glass p-5 max-w-2xl animate-fadeUp space-y-4">
-        <h3 class="font-bold text-indigo-50 flex items-center gap-2"><Database class="w-5 h-5 text-sky-300" /> Supabase 云端同步</h3>
-        <p class="text-xs text-indigo-200/60">多台设备（一体机/教师机）间同步数据。写入需要 Service Role Key（仅保存在本机 config.json）。<strong class="text-indigo-200">留空的字段保持不变</strong>，不会清空已有配置。</p>
-        <div>
-          <label class="label">Project URL</label>
-          <input v-model="syncForm.supabaseUrl" class="input" placeholder="https://xxxx.supabase.co" />
-        </div>
-        <div>
-          <label class="label">Anon Key</label>
-          <input v-model="syncForm.supabaseAnonKey" class="input" />
-        </div>
-        <div>
-          <label class="label">Service Role Key</label>
-          <input v-model="syncForm.supabaseServiceKey" type="password" class="input" />
-        </div>
-        <div class="flex gap-2 flex-wrap">
-          <button class="btn btn-primary" @click="saveSyncConfig">保存同步配置</button>
-          <button class="btn btn-ghost" :disabled="testingSync" @click="testSync">
-            <Loader2 v-if="testingSync" class="w-4 h-4 animate-spin" /> 测试连接
-          </button>
-        </div>
-        <p v-if="testMsg" class="text-xs" :class="testMsgType === 'err' ? 'text-rose-300' : 'text-emerald-300'">{{ testMsg }}</p>
-        <div class="rounded-xl bg-white/5 p-3 text-xs text-indigo-200/70">
-          当前模式：{{ syncStatus.mode }} ｜ 上次同步：{{ syncStatus.lastSyncAt ? fmtTime(syncStatus.lastSyncAt) : '从未' }}
-        </div>
-      </div>
+      <ConfigTransferDialog
+        ref="transferDlg"
+        :mode="dlgMode"
+        v-model:open="dlgOpen"
+        @done="onTransferDone"
+      />
     </main>
 
     <!-- 底部操作栏（一体机大按钮） -->
@@ -404,6 +417,8 @@ import {
 import ItemsManager from '../components/ItemsManager.vue';
 import RulesManager from '../components/RulesManager.vue';
 import PetsLevelManager from '../components/PetsLevelManager.vue';
+import SyncHealthCard from '../components/SyncHealthCard.vue';
+import ConfigTransferDialog from '../components/ConfigTransferDialog.vue';
 import { api, clearAuth, upload } from '../api';
 import { toast } from '../composables/toast';
 import { useSettings } from '../composables/settings';
@@ -422,14 +437,40 @@ const tabs = [
   { key: 'rules', label: '状态规则', icon: Smile as LucideIcon },
   { key: 'pets', label: '宠物等级', icon: Gauge as LucideIcon },
   { key: 'settings', label: '设置', icon: Settings2 as LucideIcon },
-  { key: 'sync', label: '同步', icon: Database as LucideIcon },
 ];
+
+/* 设置页分区导航：原来的长页面拆成五个聚焦分区 */
+const settingsSection = ref('basics');
+const settingsSections = [
+  { id: 'basics', label: '基础与科目', icon: Settings2 as LucideIcon },
+  { id: 'sync', label: '同步与备份', icon: Database as LucideIcon },
+  { id: 'security', label: '安全与口令', icon: ShieldCheck as LucideIcon },
+  { id: 'transfer', label: '配置中心', icon: Download as LucideIcon },
+  { id: 'data', label: '数据管理', icon: Archive as LucideIcon },
+];
+function scrollToSection(id: string): void {
+  requestAnimationFrame(() => {
+    document.getElementById(`sec-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.scrollBy({ top: -90 });
+  });
+}
+
+/** 统一配置迁移对话框 */
+const transferDlg = ref<InstanceType<typeof ConfigTransferDialog> | null>(null);
+const dlgOpen = ref(false);
+const dlgMode = ref<'export' | 'import'>('export');
+const UploadIcon = Upload;
+function openTransfer(mode: 'export' | 'import'): void {
+  dlgMode.value = mode;
+  dlgOpen.value = true;
+  void transferDlg.value?.show();
+}
+async function onTransferDone(): Promise<void> {
+  await Promise.all([loadAll(), loadAudit()]);
+}
 
 const stats = reactive<Record<string, number>>({});
 const syncStatus = reactive<{ mode: string; lastSyncAt: string }>({ mode: 'mock', lastSyncAt: '' });
-const syncing = ref(false);
-const syncMsg = ref('');
-const syncMsgType = ref<'ok' | 'error'>('ok');
 
 const adminStudents = ref<any[]>([]);
 const presets = ref<any[]>([]);
@@ -449,7 +490,7 @@ const spForm = reactive({ id: '', name: '', emoji: '', colorFrom: '', colorTo: '
 const speciesAvatarFile = ref<File | null>(null);
 const speciesAvatarPreview = ref('');
 const itemForm = reactive({ id: '', name: '', type: 'food', cost: 10, effectText: '{}', desc: '' });
-const setForm = reactive({ pointsUnit: '积分', adminName: '', giteeRepo: '', giteeEnabled: false, backupMaxMB: 1024, emergencyPwEnabled: true, termName: '默认学期', teacherPassword: '123456', activeSubject: '默认', cloudBackupRetention: 10, heartbeatTimeoutSec: 120, subjects: [{ name: '默认', sync: true, enabled: { points: true, pets: true, shop: true, rank: true, avatar: true } }], uiStyle: { welcome: 'global_formal' as string, student: 'formal' as string, admin: 'global_formal' as string } });
+const setForm = reactive({ pointsUnit: '积分', adminName: '', giteeRepo: '', giteeEnabled: false, backupMaxMB: 1024, emergencyPwEnabled: true, termName: '默认学期', teacherPassword: '', teacherPasswordSet: false, activeSubject: '默认', cloudBackupRetention: 10, heartbeatTimeoutSec: 120, autoPullMinutes: 10, subjects: [{ name: '默认', sync: true, enabled: { points: true, pets: true, shop: true, rank: true, avatar: true } }], uiStyle: { welcome: 'global_formal' as string, student: 'formal' as string, admin: 'global_formal' as string } });
 const auditLogs = ref<any[]>([]);
 const errorReports = ref<any[]>([]);
 const dataMsg = ref('');
@@ -457,8 +498,6 @@ const dataMsgType = ref<'ok' | 'err'>('ok');
 const updatePolicy = reactive({ mode: 'none' });
 const updatePolicyMsg = ref('');
 const updatePolicyMsgType = ref<'ok' | 'err'>('ok');
-const configMsg = ref('');
-const configMsgType = ref<'ok' | 'err'>('ok');
 const pwForm = reactive({ old: '', next: '' });
 const syncForm = reactive({ supabaseUrl: '', supabaseAnonKey: '', supabaseServiceKey: '' });
 const testingSync = ref(false);
@@ -491,6 +530,9 @@ async function loadAll(): Promise<void> {
   setForm.giteeRepo = se.giteeRepo;
   setForm.backupMaxMB = se.backupMaxMB || 1024;
   setForm.heartbeatTimeoutSec = (se as { heartbeatTimeoutSec?: number }).heartbeatTimeoutSec || 120;
+  setForm.autoPullMinutes = (se as { autoPullMinutes?: number }).autoPullMinutes ?? 10;
+  setForm.teacherPasswordSet = !!(se as { teacherPasswordSet?: boolean }).teacherPasswordSet;
+  setForm.teacherPassword = ''; // 哈希存储后不再回显，留空即不修改
   setForm.emergencyPwEnabled = se.emergencyPwEnabled !== false;
   setForm.termName = se.termName || '默认学期';
   // 界面文案风格（当前生效规则）
@@ -590,9 +632,15 @@ async function loadErrors(): Promise<void> {
   }
 }
 async function saveTeacherPassword(): Promise<void> {
+  if (!setForm.teacherPassword.trim()) {
+    toast('口令留空 = 不修改', 'success');
+    return;
+  }
   try {
     await api('/admin/settings', { method: 'PUT', body: JSON.stringify({ teacherPassword: setForm.teacherPassword }) });
-    toast('教师口令已保存', 'success');
+    toast('教师口令已加密保存', 'success');
+    setForm.teacherPassword = '';
+    await loadAll();
   } catch (e) {
     toast((e as Error).message, 'error');
   }
@@ -734,41 +782,6 @@ async function saveUpdatePolicy(): Promise<void> {
   }
 }
 
-async function exportConfig(): Promise<void> {
-  try {
-    const cfg = await api<Record<string, unknown>>('/admin/config/export');
-    const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'classroom-pet-config-' + new Date().toISOString().slice(0, 10) + '.json';
-    a.click();
-    URL.revokeObjectURL(url);
-    configMsg.value = '配置已导出，请妥善保管（含云端密钥）';
-    configMsgType.value = 'ok';
-  } catch (e) {
-    configMsg.value = (e as Error).message;
-    configMsgType.value = 'err';
-  }
-}
-
-async function importConfig(e: Event): Promise<void> {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (!file) return;
-  try {
-    const text = await file.text();
-    const data = JSON.parse(text) as Record<string, unknown>;
-    await api('/admin/config/import', { method: 'POST', body: JSON.stringify(data) });
-    configMsg.value = '配置已导入，云端配置已更新';
-    configMsgType.value = 'ok';
-    await loadAll();
-    await loadUpdatePolicy();
-  } catch (err) {
-    configMsg.value = '导入失败：' + (err as Error).message;
-    configMsgType.value = 'err';
-  }
-}
-
 async function changePw(): Promise<void> {
   if (!pwForm.old || !pwForm.next) { toast('请填写新旧密码', 'error'); return; }
   try {
@@ -805,27 +818,6 @@ async function saveSyncConfig(): Promise<void> {
     await loadAll();
   } catch (e) {
     toast((e as Error).message, 'error');
-  }
-}
-
-async function runSync(): Promise<void> {
-  syncing.value = true;
-  syncMsg.value = '';
-  try {
-    const r = await api<{ conflicts: unknown[]; pulled: number; pushed: number; completed: boolean }>('/sync/run', { method: 'POST' });
-    if (r.conflicts.length > 0) {
-      syncMsg.value = `存在 ${r.conflicts.length} 处冲突，请在准备界面处理`;
-      syncMsgType.value = 'error';
-    } else {
-      syncMsg.value = `同步完成：拉取 ${r.pulled}，推送 ${r.pushed}`;
-      syncMsgType.value = 'ok';
-    }
-    await loadAll();
-  } catch (e) {
-    syncMsg.value = (e as Error).message;
-    syncMsgType.value = 'error';
-  } finally {
-    syncing.value = false;
   }
 }
 

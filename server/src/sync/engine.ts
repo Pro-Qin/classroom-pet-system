@@ -119,9 +119,14 @@ export async function pushDirty(
  *  4. 若无冲突 → 推进 last_sync_at，完成
  *  有冲突 → 返回 conflicts 等待用户裁决，游标不推进（绝不丢数据）
  */
-export async function runSync(transport: SyncTransport): Promise<SyncResult> {
+export async function runSync(
+  transport: SyncTransport,
+  opts?: { snapshot?: boolean }
+): Promise<SyncResult> {
   const db = getDb();
-  const backupFile = snapshotDb();
+  // P0 兜底：用户主动同步/首次同步强制先快照；后台自动拉取可跳过
+  // （VACUUM INTO 是同步阻塞操作，高频自动路径上会造成秒级事件循环卡顿）
+  const backupFile = opts?.snapshot === false ? null : snapshotDb();
   const lastSync = getLastSync();
   let pulled = 0;
   const conflicts: ConflictItem[] = [];

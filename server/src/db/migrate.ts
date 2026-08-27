@@ -278,6 +278,36 @@ export function migrate(db?: SqliteDb): void {
   d.exec(`UPDATE students SET points = -1000000000 WHERE points < -1000000000`);
   d.exec(`UPDATE pets SET exp = 0 WHERE exp < 0`);
   d.exec(`UPDATE students SET points = 0 WHERE points < 0`);
+
+  // 状态规则数据修复：同一条规则内同属性只保留第一条条件（清除历史互斥冲突）
+  {
+    const rules = d.prepare(`SELECT id, conditions FROM state_rules WHERE deleted_at IS NULL`).all() as
+      | { id: string; conditions: string }[]
+      | [];
+    const seen = new Map<string, string>();
+    for (const rule of rules) {
+      if (seen.has(rule.conditions)) continue;
+      seen.set(rule.conditions, rule.id);
+      try {
+        const conds = JSON.parse(rule.conditions || '[]') as { attr?: string }[];
+        if (!Array.isArray(conds)) continue;
+        const attrSet = new Set<string>();
+        const kept: { attr?: string }[] = [];
+        let dirty = false;
+        for (const c of conds) {
+          const attr = c && typeof c.attr === 'string' ? c.attr : '';
+          if (attr && attrSet.has(attr)) { dirty = true; continue; }
+          if (attr) attrSet.add(attr);
+          kept.push(c);
+        }
+        if (dirty) {
+          d.prepare(`UPDATE state_rules SET conditions = ? WHERE id = ?`).run(JSON.stringify(kept), rule.id);
+        }
+      } catch {
+        /* 非法 JSON 交由运行时兜底 */
+      }
+    }
+  }
   d.exec(`UPDATE items SET cost = 0 WHERE cost < 0`);
 
   // 同步游标比较用的辅助索引（脏行查询免全表扫描）

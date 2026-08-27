@@ -64,7 +64,7 @@ function readSettingsJson(db: SqliteDb, key: string): unknown {
   }
 }
 
-/** 读取等级体系：levels_config（新，含名称）→ 旧 exp_thresholds → 默认 7 级 */
+/** 读取等级体系：levels_config（新，含名称）→ 旧 exp_thresholds（7级）→ 默认 15 级成长线 */
 export function getLevels(db?: SqliteDb): LevelConfig {
   const d = db ?? getDb();
   const raw = readSettingsJson(d, 'levels_config') as { names?: unknown; thresholds?: unknown } | undefined;
@@ -85,7 +85,19 @@ export function getLevels(db?: SqliteDb): LevelConfig {
       if (ok) return { names: (names as string[]).map((n) => n.trim().slice(0, 12)), thresholds: t };
     }
   }
-  // 未配置过 → 默认 15 级曲线（中游学生约一年满级）
+  // 旧配置：只有 7 级阈值（沿用默认七阶名称），保留老用户自定义
+  const legacy = readSettingsJson(d, 'exp_thresholds');
+  if (
+    Array.isArray(legacy) &&
+    legacy.length === DEFAULT_EXP_THRESHOLDS.length &&
+    legacy.every((n) => typeof n === 'number' && Number.isFinite(n))
+  ) {
+    return {
+      names: [...DEFAULT_LEVEL_NAMES.slice(0, DEFAULT_EXP_THRESHOLDS.length)],
+      thresholds: (legacy as number[]).map((n) => Math.max(0, Math.round(n))),
+    };
+  }
+  // 未配置过 → 默认 15 级成长线（中游学生约一年满级）
   return { names: [...DEFAULT_LEVEL_NAMES], thresholds: [...DEFAULT_LEVEL_THRESHOLDS] };
 }
 
@@ -120,18 +132,9 @@ function setSettingSafe(db: SqliteDb, key: string, value: string): void {
   ).run(key, value, nowIso());
 }
 
-/** 读取可配置的等级经验阈值（兼容旧 settings key；levels_config 存在时以其为准） */
+/** 等级经验阈值：统一委托 getLevels（单一事实来源，15 级或用户自定义级数） */
 export function getExpThresholds(db?: SqliteDb): number[] {
-  const d = db ?? getDb();
-  const legacy = readSettingsJson(d, 'exp_thresholds');
-  if (
-    Array.isArray(legacy) &&
-    legacy.length === DEFAULT_EXP_THRESHOLDS.length &&
-    legacy.every((n) => typeof n === 'number' && Number.isFinite(n))
-  ) {
-    return (legacy as number[]).map((n) => Math.max(0, Math.round(n)));
-  }
-  return [...DEFAULT_EXP_THRESHOLDS];
+  return [...getLevels(db).thresholds];
 }
 
 export function levelOf(exp: number, thresholds: number[] = DEFAULT_EXP_THRESHOLDS): { level: number; label: string; stageLabels: string[] } {

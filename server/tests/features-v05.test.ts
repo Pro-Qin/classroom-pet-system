@@ -101,6 +101,34 @@ describe('背包新结构（id 主键，可同步）', () => {
   });
 });
 
+describe('等级来源统一（单一事实来源）', () => {
+  it('未配置 → 默认 15 级成长线；getExpThresholds 与 getLevels 同源', async () => {
+    const { getLevels, getExpThresholds } = await import('../src/services/pets.js');
+    const lv = getLevels(getDb());
+    expect(lv.thresholds).toHaveLength(15);
+    expect(lv.thresholds[1]).toBe(1000);
+    expect(getExpThresholds(getDb())).toEqual(lv.thresholds); // 15 级设级/算档不再被 7 级旧源钳制
+  });
+
+  it('旧 exp_thresholds 自定义 7 级 → 名称沿用默认七阶、阈值保留', async () => {
+    const { getLevels } = await import('../src/services/pets.js');
+    const { setSetting } = await import('../src/db/settings.js');
+    setSetting('exp_thresholds', JSON.stringify([0, 50, 150, 400, 900, 1400, 2000]));
+    const lv = getLevels(getDb());
+    expect(lv.thresholds).toEqual([0, 50, 150, 400, 900, 1400, 2000]);
+    expect(lv.names).toHaveLength(7);
+  });
+
+  it('levels_config 15 级 → 全链路（含 getExpThresholds）都是 15 级', async () => {
+    const { getLevels, getExpThresholds, saveLevels } = await import('../src/services/pets.js');
+    saveLevels(getDb(),
+      ['蛋','破壳','幼年','成长','成熟','进化','传说','传奇','神话','史诗','闪耀','王者','星耀','至尊','巅峰'],
+      [0, 1000, 1120, 1254, 1404, 1572, 1761, 1972, 2209, 2474, 2771, 3103, 3476, 3893, 4360]);
+    expect(getExpThresholds(getDb())).toHaveLength(15);
+    expect(getLevels(getDb()).names[14]).toBe('巅峰');
+  });
+});
+
 describe('积分下限钳 0', () => {
   it('扣分超过现有积分 → 钳到 0，流水记录实际生效值', () => {
     const ts = nowIso();

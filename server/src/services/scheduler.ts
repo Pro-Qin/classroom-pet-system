@@ -1,10 +1,11 @@
 import { getDb, nowIso } from '../db/connection.js';
 import { settleAllPets } from './pets.js';
 import { getSetting, setSetting } from '../db/settings.js';
-import { snapshotDb } from '../db/backup.js';
 import { getTransport } from '../routes/sync.js';
 import { runSync } from '../sync/engine.js';
-import { loadConfig } from '../config.js';
+import { loadConfig, DB_FILE, BACKUP_DIR } from '../config.js';
+import { join } from 'node:path';
+import { spawn } from 'node:child_process';
 
 /**
  * 后台定时任务：
@@ -29,11 +30,17 @@ function localHour(): number {
   return new Date().getHours();
 }
 
+/** 今日快照目标路径（与 backup.ts 的 snapshotDb 命名保持同目录同风格） */
+function snapshotPathForToday(): string {
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  return join(BACKUP_DIR, `snapshot-${ts}.db`);
+}
+
 async function autoPullOnce(): Promise<void> {
   if (syncing) return;
   syncing = true;
   try {
-    const result = await runSync(getTransport());
+    const result = await runSync(getTransport(), { snapshot: false });
     if (result.completed) {
       setSetting('sync_last_error', '');
       setSetting('auto_pull_last_at', String(Date.now()));
@@ -63,15 +70,27 @@ async function tick(): Promise<void> {
 
     const today = nowIso().slice(0, 10);
     // ---- 每日快照（03:00 后首个 tick；date key 幂等）----
+    // VACUUM INTO 是同步操作，大库时会阻塞整个事件循环数秒，
+    // 导致心跳超时误弹"断连遮罩"。改为派生独立子进程执行，主进程零阻塞。
     const lastSnapDay = getSetting('last_daily_snapshot') ?? '';
     if (localHour() >= 3 && lastSnapDay !== today) {
-      try {
-        snapshotDb();
-        setSetting('last_daily_snapshot', today);
-        console.log('[scheduler] 每日快照完成:', today);
-      } catch (e) {
-        console.warn('[scheduler] 每日快照失败:', (e as Error).message);
-      }
+      setSetting('last_daily_snapshot', today); // 先记账防重复派生；失败明天自动补
+      const child = spawn(process.execPath, [
+        '-e',
+        `const { DatabaseSync } = require('node:sqlite');` +
+          `const db = new DatabaseSync(process.env.PET_DB_PATH);` +
+          `db.exec("VACUUM INTO '" + process.env.PET_SNAP_PATH.replace(/'/g, "''") + "'");` +
+          `db.close(); console.log('[snapshot-child] done');`,
+      ], {
+        env: { ...process.env, PET_DB_PATH: DB_FILE, PET_SNAP_PATH: snapshotPathForToday() },
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.on('exit', (code) => {
+        if (code === 0) console.log('[scheduler] 每日快照完成:', today);
+        else console.warn('[scheduler] 每日快照子进程退出码', code);
+      });
+      child.unref();
     }
 
     // ---- 自动拉取 ----

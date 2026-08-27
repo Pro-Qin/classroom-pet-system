@@ -31,25 +31,35 @@ export function getTransport(): SyncTransport {
   return new MockTransport();
 }
 
-/** 确保 backups 桶存在（不存在则自动创建，private 桶） */
+/**
+ * 确保 backups 桶存在（best-effort）：
+ * 尝试创建一次，任何失败都不抛错 —— 桶是否可用由随后的对象上传验证。
+ * 不能靠错误文案判断"已存在"：Supabase Storage 对重复建桶在不同权限/RLS
+ * 配置下会返回 400/403 且文案各不相同（如 row-level security 违例），
+ * 匹配文案会导致真实部署中误判失败。
+ */
 async function ensureBackupsBucket(cfg: { supabaseUrl: string; supabaseAnonKey: string; supabaseServiceKey: string }): Promise<void> {
-  const res = await fetch(cfg.supabaseUrl + '/storage/v1/bucket', {
-    method: 'POST',
-    headers: {
-      apikey: cfg.supabaseAnonKey,
-      Authorization: 'Bearer ' + cfg.supabaseServiceKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      name: 'backups',
-      public: false,
-    }),
-  });
-  if (res.ok) return; // 创建成功
-  const text = (await res.text()).slice(0, 160);
-  // 已存在不算错误（不同报错文案都放行）
-  if (/already|exist/i.test(text)) return;
-  throw new Error('创建 backups 桶失败 HTTP ' + res.status + ' ' + text);
+  try {
+    const res = await fetch(cfg.supabaseUrl + '/storage/v1/bucket', {
+      method: 'POST',
+      headers: {
+        apikey: cfg.supabaseAnonKey,
+        Authorization: 'Bearer ' + cfg.supabaseServiceKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'backups',
+        public: false,
+      }),
+    });
+    if (!res.ok) {
+      // 已存在或无权建桶等情形一律放行：后续上传会给出真实验证
+      const text = (await res.text()).slice(0, 120);
+      console.warn('[backup] 建桶尝试未成功（不影响继续）:', res.status, text);
+    }
+  } catch (e) {
+    console.warn('[backup] 建桶请求异常（不影响继续）:', (e as Error).message);
+  }
 }
 
 /** 异地备份：把最新本地快照上传到 Supabase Storage backups 桶（best-effort） */
@@ -74,10 +84,13 @@ export async function uploadBackupToStorage(): Promise<{ ok: boolean; name?: str
       },
       body: data,
     });
-    if (res.ok) return { ok: true, name };
-      // 自动保留策略：云端 backups 桶只保留最近 N 份（默认 10）
-      const retention = Math.max(1, Number(getSetting('cloud_backup_retention')) || 10);
+      if (!res.ok) {
+        const text = (await res.text()).slice(0, 160);
+        return { ok: false, error: '存储上传失败 HTTP ' + res.status + ' ' + text };
+      }
+      // 自动保留策略：上传成功后清理云端 backups 桶旧份（只保留最近 N 份，默认 10，best-effort）
       try {
+        const retention = Math.max(1, Number(getSetting('cloud_backup_retention')) || 10);
         const listRes = await fetch(cfg.supabaseUrl + '/storage/v1/object/list/backups', {
           method: 'POST',
           headers: {
@@ -85,10 +98,12 @@ export async function uploadBackupToStorage(): Promise<{ ok: boolean; name?: str
             Authorization: 'Bearer ' + cfg.supabaseServiceKey,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ prefix: 'backup-', limit: 200 }),
+          // prefix 用空串全量列举后客户端过滤：部分 Storage 版本对非空前缀匹配异常
+          body: JSON.stringify({ prefix: '', limit: 200 }),
         });
         if (listRes.ok) {
-          const items = (await listRes.json()) as { name: string; updated_at?: string }[];
+          const all = (await listRes.json()) as { name: string; updated_at?: string }[];
+          const items = all.filter((x) => typeof x.name === 'string' && x.name.startsWith('backup-'));
           items.sort((a, b) => (a.updated_at ?? '').localeCompare(b.updated_at ?? ''));
           const expired = items.slice(0, Math.max(0, items.length - retention));
           for (const item of expired) {
@@ -104,8 +119,7 @@ export async function uploadBackupToStorage(): Promise<{ ok: boolean; name?: str
       } catch {
         /* 清理失败不影响本次备份成功 */
       }
-    const text = (await res.text()).slice(0, 160);
-    return { ok: false, error: '存储上传失败 HTTP ' + res.status + ' ' + text };
+      return { ok: true, name };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
@@ -217,6 +231,18 @@ function launchInstaller(installerPath: string): void {
   child.unref();
 }
 
+/**
+ * 同步守卫参数（模块级对象：运行时修改属性立即生效，便于部署调优与测试注入）。
+ */
+export const syncGuards = {
+  /** 同一 IP 同一类同步操作的最小间隔（毫秒） */
+  throttleMs: 6000,
+  /** 全局两次手动同步（run）的最小间隔（毫秒，防多设备放大） */
+  globalRunGapMs: 8000,
+  /** 待裁决冲突的有效期（毫秒），超时按"已过期"拒绝 */
+  pendingTtlMs: 120_000,
+};
+
 export function registerSyncRoutes(app: express.Express, _auth: RequestHandler): void {
   // ============================================================
   // 准备阶段接口（登录前可调，供准备界面检查更新/同步/冲突裁决）：
@@ -226,17 +252,18 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
   // 保留鉴权：sync/config（管理员）、sync/firstrun（已登录）
   // ============================================================
 
-  /** 简单节流：同一 IP 对 sync/run|resolve 每 3 秒最多 1 次；另加全局上限防多设备放大 */
+  /** 简单节流：同一 IP 对每种同步操作每 syncGuards.throttleMs 最多 1 次；run 另有全局上限。
+   *  按「操作类型+IP」分桶：后台自动推送（push）与手动同步（run）互不干扰，不应撞出 429。 */
   const syncThrottle = new Map<string, number>();
   let lastGlobalRun = 0;
-  function throttle(ip: string, global = false): boolean {
-    const last = syncThrottle.get(ip) ?? 0;
+  function throttle(ip: string, kind: 'push' | 'run' | 'resolve'): boolean {
+    const key = `${kind}:${ip}`;
+    const last = syncThrottle.get(key) ?? 0;
     const now = Date.now();
-    // 放宽节流窗口：正常准备界面同步 + 后台自动推送不应互相撞出 429
-    if (now - last < 6000) return true;
-    if (global && now - lastGlobalRun < 8000) return true;
-    syncThrottle.set(ip, now);
-    if (global) lastGlobalRun = now;
+    if (now - last < syncGuards.throttleMs) return true;
+    if (kind === 'run' && now - lastGlobalRun < syncGuards.globalRunGapMs) return true;
+    syncThrottle.set(key, now);
+    if (kind === 'run') lastGlobalRun = now;
     return false;
   }
 
@@ -287,7 +314,7 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
   // 刷新/数据操作后推送本地变更到云端（增量推送，不拉取不产生冲突）
   app.post('/api/sync/push', (req, res) => {
     const ip = req.ip ?? 'unknown';
-    if (throttle(ip)) {
+    if (throttle(ip, 'push')) {
       res.status(429).json({ error: '操作过于频繁，请稍后再试' });
       return;
     }
@@ -307,7 +334,7 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
   // 执行两路同步（第一阶段）；有冲突时返回 conflicts，等待用户裁决
   app.post('/api/sync/run', (req, res) => {
     const ip = req.ip ?? 'unknown';
-    if (throttle(ip, true)) {
+    if (throttle(ip, 'run')) {
       res.status(429).json({ error: '操作过于频繁，请稍后再试' });
       return;
     }
@@ -337,6 +364,14 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
           });
           return;
         }
+        // 云端列缺失（旧版 schema，如缺 subject）：PGRST204
+        const colMiss = msg.match(/Could not find the '([^']+)' column of '([^']+)'/i);
+        if (colMiss) {
+          res.status(500).json({
+            error: `云端表 ${colMiss[2]} 缺少列 ${colMiss[1]}：云端结构过旧，请在 Supabase SQL Editor 中执行仓库最新 supabase/schema.sql 后重试`,
+          });
+          return;
+        }
         res.status(500).json({ error: '同步失败，请稍后重试或检查云端配置（' + msg.slice(0, 120) + '）' });
       }
     })();
@@ -347,12 +382,12 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
   //       且每个冲突必须显式给出 local/cloud 选择（空请求默认 local 的隐患已消除）。
   app.post('/api/sync/resolve', (req, res) => {
     const ip = req.ip ?? 'unknown';
-    if (throttle(ip)) {
+    if (throttle(ip, 'resolve')) {
       res.status(429).json({ error: '操作过于频繁，请稍后再试' });
       return;
     }
     const { choices } = (req.body ?? {}) as { choices?: Record<string, ConflictChoice> };
-    if (!pending || pending.ip !== ip || Date.now() - pending.at > 120_000) {
+    if (!pending || pending.ip !== ip || Date.now() - pending.at > syncGuards.pendingTtlMs) {
       res.status(400).json({ error: '没有待裁决的冲突（或已过期）' });
       return;
     }

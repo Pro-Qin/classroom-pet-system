@@ -89,16 +89,24 @@ export function applyRow(db: ReturnType<typeof getDb>, table: string, row: Recor
   stmt.run(...(cols.map((c) => row[c]) as unknown[] as Parameters<typeof stmt.run>));
 }
 
-export async function pushDirty(transport: SyncTransport, sinceIso: string): Promise<number> {
+export async function pushDirty(
+  transport: SyncTransport,
+  sinceIso: string,
+  opts?: { skip?: Map<string, Set<string>> }
+): Promise<number> {
   const db = getDb();
   let pushed = 0;
   for (const table of SYNC_TABLES) {
     const dirty = db
       .prepare(`SELECT * FROM ${table} WHERE updated_at > ?`)
       .all(sinceIso) as Record<string, unknown>[];
-    if (dirty.length === 0) continue;
-    await transport.push(table, dirty);
-    pushed += dirty.length;
+    // 跳过本轮 PULL 刚写入的行：它们的 updated_at 必然晚于游标，
+    // 若不排除会被当作"本地脏行"回推云端（回声），并有盲写覆盖他端更新的风险
+    const skip = opts?.skip?.get(table);
+    const filtered = skip ? dirty.filter((r) => !skip.has(r.id as string)) : dirty;
+    if (filtered.length === 0) continue;
+    await transport.push(table, filtered);
+    pushed += filtered.length;
   }
   return pushed;
 }
@@ -117,6 +125,8 @@ export async function runSync(transport: SyncTransport): Promise<SyncResult> {
   const lastSync = getLastSync();
   let pulled = 0;
   const conflicts: ConflictItem[] = [];
+  /** 本轮 PULL 已应用的行（按表）：PUSH 时跳过，防止"拉回即回推"的回声与盲写覆盖 */
+  const skipIds = new Map<string, Set<string>>();
 
   // ---- PULL（检测冲突，无冲突行直接应用）----
   for (const table of SYNC_TABLES) {
@@ -142,12 +152,14 @@ export async function runSync(transport: SyncTransport): Promise<SyncResult> {
         continue;
       }
       applyRow(db, table, cRow);
+      if (!skipIds.has(table)) skipIds.set(table, new Set());
+      skipIds.get(table)!.add(id);
       pulled++;
     }
   }
 
   // ---- PUSH ----
-  const pushed = await pushDirty(transport, lastSync);
+  const pushed = await pushDirty(transport, lastSync, { skip: skipIds });
 
   // 存在未裁决冲突：不推进游标，避免覆盖
   if (conflicts.length > 0) {

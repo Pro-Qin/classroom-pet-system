@@ -83,6 +83,10 @@ export class MockTransport implements SyncTransport {
  */
 export class SupabaseTransport implements SyncTransport {
   readonly name = 'supabase' as const;
+  /** 单页行数：Supabase REST 默认 max-rows=1000，超限会被静默截断，必须带 Range 翻页 */
+  private pageSize = 1000;
+  /** 单次推送分块行数：过大的批量请求容易被拒/超时 */
+  private pushChunk = 500;
   constructor(
     private url: string,
     private anonKey: string,
@@ -111,22 +115,38 @@ export class SupabaseTransport implements SyncTransport {
 
   async pull(table: string, sinceIso: string): Promise<Record<string, unknown>[]> {
     this.assertSafeUrl();
-    const q = sinceIso
-      ? `${this.url}/rest/v1/${table}?select=*&updated_at=gt.${encodeURIComponent(sinceIso)}&order=updated_at.asc`
-      : `${this.url}/rest/v1/${table}?select=*`;
-    const res = await fetch(q, { headers: this.headers(false) });
-    if (!res.ok) throw new Error(`Supabase pull ${table} 失败: ${res.status} ${await res.text()}`);
-    return (await res.json()) as Record<string, unknown>[];
+    // 读也优先用 service key：RLS 启用且无匿名读策略时，anon 只会拿到空数组
+    // （表面 200 实际全空）；服务端本就持有 service key，应绕过 RLS 拉取。
+    // 带 Range 翻页：Supabase REST 默认 max-rows=1000，超过会被静默截断。
+    const out: Record<string, unknown>[] = [];
+    let from = 0;
+    for (;;) {
+      const base = sinceIso
+        ? `${this.url}/rest/v1/${table}?select=*&updated_at=gt.${encodeURIComponent(sinceIso)}&order=updated_at.asc`
+        : `${this.url}/rest/v1/${table}?select=*&order=updated_at.asc`;
+      const res = await fetch(base, {
+        headers: { ...this.headers(true), Range: `${from}-${from + this.pageSize - 1}` },
+      });
+      if (!res.ok) throw new Error(`Supabase pull ${table} 失败: ${res.status} ${await res.text()}`);
+      const rows = (await res.json()) as Record<string, unknown>[];
+      out.push(...rows);
+      if (rows.length < this.pageSize) break;
+      from += this.pageSize;
+    }
+    return out;
   }
 
   async push(table: string, rows: Record<string, unknown>[]): Promise<void> {
     if (rows.length === 0) return;
     this.assertSafeUrl();
-    const res = await fetch(`${this.url}/rest/v1/${table}`, {
-      method: 'POST',
-      headers: { ...this.headers(true), Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify(rows),
-    });
-    if (!res.ok) throw new Error(`Supabase push ${table} 失败: ${res.status} ${await res.text()}`);
+    for (let i = 0; i < rows.length; i += this.pushChunk) {
+      const chunk = rows.slice(i, i + this.pushChunk);
+      const res = await fetch(`${this.url}/rest/v1/${table}`, {
+        method: 'POST',
+        headers: { ...this.headers(true), Prefer: 'resolution=merge-duplicates' },
+        body: JSON.stringify(chunk),
+      });
+      if (!res.ok) throw new Error(`Supabase push ${table} 失败: ${res.status} ${await res.text()}`);
+    }
   }
 }

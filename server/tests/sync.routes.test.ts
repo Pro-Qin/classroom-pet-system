@@ -247,7 +247,7 @@ describe('/api/sync/run 与节流', () => {
   it('节流窗口过后恢复放行', async () => {
     syncGuards.throttleMs = 20;
     expect((await call('POST', '/api/sync/run')).status).toBe(200);
-    await sleep(50);
+    await sleep(150); // CI Windows 定时器粒度粗，放宽余量
     expect((await call('POST', '/api/sync/run')).status).toBe(200);
   });
 });
@@ -327,7 +327,7 @@ describe('/api/sync/resolve 冲突裁决流（HTTP 层）', () => {
     await prepareConflict('stu_http_x', 11, 22);
     await call('POST', '/api/sync/run');
     syncGuards.pendingTtlMs = 30;
-    await sleep(60);
+    await sleep(150); // CI 余量
     const r = await call('POST', '/api/sync/resolve', { choices: { 'students:stu_http_x': 'local' } });
     expect(r.status).toBe(400);
     expect(String(r.json.error)).toContain('已过期');

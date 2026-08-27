@@ -50,6 +50,16 @@ jobs:
       - name: 类型检查 + 测试（发布前 smoke）
         run: npm run typecheck && npm test
 
+      - name: 上传测试日志（失败时诊断用）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-failure-logs
+          path: |
+            server/**/*.log
+            **/npm-debug.log*
+          if-no-files-found: ignore
+
       - name: 构建（client + server）
         run: npm run build
 

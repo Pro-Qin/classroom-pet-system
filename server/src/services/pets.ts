@@ -34,28 +34,95 @@ export interface SpeciesRow {
   stage_labels: string;
 }
 
-/** 成长经验阈值（7 阶段，与 stage_labels 对齐；可在教师/管理端修改） */
+/** 成长经验阈值（默认 7 阶段，与 stage_labels 对齐；可在教师/管理端修改） */
 export const EXP_THRESHOLDS = [0, 100, 300, 600, 1000, 1500, 2200];
 export const DEFAULT_EXP_THRESHOLDS = [...EXP_THRESHOLDS];
 
-/** 读取可配置的等级经验阈值（settings 表 exp_thresholds，JSON 数组；异常时回退默认） */
+/** 等级体系：数量 1~15 可调，名称与经验均可编辑 */
+export const MAX_LEVELS = 15;
+export const MIN_LEVELS = 1;
+export const DEFAULT_LEVEL_NAMES = ['蛋', '破壳', '幼年', '成长', '成熟', '进化', '传说'];
+
+export interface LevelConfig {
+  names: string[];
+  thresholds: number[];
+}
+
+function readSettingsJson(db: SqliteDb, key: string): unknown {
+  try {
+    const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
+    return row ? (JSON.parse(row.value) as unknown) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** 读取等级体系：levels_config（新，含名称）→ 旧 exp_thresholds → 默认 7 级 */
+export function getLevels(db?: SqliteDb): LevelConfig {
+  const d = db ?? getDb();
+  const raw = readSettingsJson(d, 'levels_config') as { names?: unknown; thresholds?: unknown } | undefined;
+  if (raw && Array.isArray(raw.names) && Array.isArray(raw.thresholds)) {
+    const names = raw.names as unknown[];
+    const th = raw.thresholds as unknown[];
+    if (
+      names.length >= MIN_LEVELS &&
+      names.length <= MAX_LEVELS &&
+      th.length === names.length &&
+      names.every((n) => typeof n === 'string' && n.trim()) &&
+      th.every((n) => typeof n === 'number' && Number.isFinite(n))
+    ) {
+      const t = th.map((n) => Math.max(0, Math.round(n as number)));
+      t[0] = 0;
+      let ok = true;
+      for (let i = 1; i < t.length; i++) if (t[i] <= t[i - 1]) ok = false;
+      if (ok) return { names: (names as string[]).map((n) => n.trim().slice(0, 12)), thresholds: t };
+    }
+  }
+  // 旧配置：只有阈值（沿用默认名称）
+  return { names: [...DEFAULT_LEVEL_NAMES], thresholds: getExpThresholds(d) };
+}
+
+/** 校验并保存等级体系（名称/数量/经验三项一体） */
+export function saveLevels(db: SqliteDb, names: unknown, thresholds: unknown): { ok: boolean; error?: string } {
+  if (!Array.isArray(names) || !Array.isArray(thresholds)) return { ok: false, error: '格式无效' };
+  if (names.length < MIN_LEVELS || names.length > MAX_LEVELS) {
+    return { ok: false, error: `等级数量需在 ${MIN_LEVELS}~${MAX_LEVELS} 级之间` };
+  }
+  if (thresholds.length !== names.length) return { ok: false, error: '等级数量与经验数组长度不一致' };
+  if (!names.every((n) => typeof n === 'string' && n.trim())) return { ok: false, error: '每个等级都需要名称' };
+  if (!thresholds.every((n) => typeof n === 'number' && Number.isFinite(n))) {
+    return { ok: false, error: '经验值必须为数字' };
+  }
+  const t = thresholds.map((n) => Math.max(0, Math.round(n as number)));
+  t[0] = 0;
+  for (let i = 1; i < t.length; i++) {
+    if (t[i] <= t[i - 1]) return { ok: false, error: '等级经验要求必须逐级递增' };
+  }
+  setSettingSafe(
+    db,
+    'levels_config',
+    JSON.stringify({ names: (names as string[]).map((n) => (n as string).trim().slice(0, 12)), thresholds: t })
+  );
+  return { ok: true };
+}
+
+function setSettingSafe(db: SqliteDb, key: string, value: string): void {
+  db.prepare(
+    `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+  ).run(key, value, nowIso());
+}
+
+/** 读取可配置的等级经验阈值（兼容旧 settings key；levels_config 存在时以其为准） */
 export function getExpThresholds(db?: SqliteDb): number[] {
   const d = db ?? getDb();
-  try {
-    const row = d
-      .prepare(`SELECT value FROM settings WHERE key = 'exp_thresholds'`)
-      .get() as { value: string } | undefined;
-    if (!row) return [...DEFAULT_EXP_THRESHOLDS];
-    const arr = JSON.parse(row.value) as unknown;
-    if (
-      Array.isArray(arr) &&
-      arr.length === DEFAULT_EXP_THRESHOLDS.length &&
-      arr.every((n) => typeof n === 'number' && Number.isFinite(n))
-    ) {
-      return arr.map((n) => Math.max(0, Math.round(n as number)));
-    }
-  } catch {
-    /* fallback */
+  const legacy = readSettingsJson(d, 'exp_thresholds');
+  if (
+    Array.isArray(legacy) &&
+    legacy.length === DEFAULT_EXP_THRESHOLDS.length &&
+    legacy.every((n) => typeof n === 'number' && Number.isFinite(n))
+  ) {
+    return (legacy as number[]).map((n) => Math.max(0, Math.round(n)));
   }
   return [...DEFAULT_EXP_THRESHOLDS];
 }
@@ -83,13 +150,44 @@ export function getSpecies(db: SqliteDb, speciesId: string): SpeciesRow | undefi
 }
 
 export function stageLabelOf(species: SpeciesRow | undefined, exp: number, thresholds: number[] = DEFAULT_EXP_THRESHOLDS): string {
-  if (!species) return '蛋';
-  try {
-    const labels = JSON.parse(species.stage_labels) as string[];
-    return labels[stageIndex(exp, thresholds)] ?? labels[0] ?? '蛋';
-  } catch {
-    return '蛋';
+  const idx = stageIndex(exp, thresholds);
+  // 种类自带文案优先（旧数据兼容）；级数超出种类文案时回退默认名
+  if (species) {
+    try {
+      const labels = JSON.parse(species.stage_labels) as string[];
+      return labels[idx] ?? labels[0] ?? DEFAULT_LEVEL_NAMES[0];
+    } catch {
+      /* ignore */
+    }
   }
+  return DEFAULT_LEVEL_NAMES[idx] ?? `Lv.${idx + 1}`;
+}
+
+/** 是否配置过自定义等级体系（levels_config 存在即视为是） */
+export function hasCustomLevels(db?: SqliteDb): boolean {
+  const d = db ?? getDb();
+  const row = d.prepare(`SELECT value FROM settings WHERE key = 'levels_config'`).get() as { value: string } | undefined;
+  return !!row;
+}
+
+/**
+ * 等级名称解析（全局优先）：
+ * 配置过 levels_config → 用全局名称；否则回退种类自带文案 → 默认名称。
+ */
+export function levelLabelOf(db: SqliteDb, species: SpeciesRow | undefined, exp: number, thresholds: number[]): string {
+  if (hasCustomLevels(db)) {
+    const lv = getLevels(db);
+    const idx = stageIndex(exp, thresholds);
+    return lv.names[idx] ?? `Lv.${idx + 1}`;
+  }
+  return stageLabelOf(species, exp, thresholds);
+}
+
+/** 全局等级名称数组（供前端进度条/管理界面展示） */
+export function globalLevelNames(db?: SqliteDb): string[] {
+  const d = db ?? getDb();
+  if (hasCustomLevels(d)) return getLevels(d).names;
+  return [...DEFAULT_LEVEL_NAMES];
 }
 
 export function stageLabelsOf(species: SpeciesRow | undefined): string[] {

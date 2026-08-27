@@ -3,7 +3,7 @@ import type { Request, RequestHandler } from 'express';
 import bcrypt from 'bcryptjs';
 import { getDb, newId, nowIso } from '../db/connection.js';
 import { applyPoints, getLeaderboard, getPointHistory, revertPointEvents } from '../services/points.js';
-import { addPetExp, getSpecies, getExpThresholds, DEFAULT_EXP_THRESHOLDS, stageIndex, stageLabelOf, stageLabelsOf, type PetRow } from '../services/pets.js';
+import { addPetExp, getSpecies, getLevels, saveLevels, hasCustomLevels, globalLevelNames, getExpThresholds, DEFAULT_EXP_THRESHOLDS, stageIndex, levelLabelOf, type PetRow } from '../services/pets.js';
 import { setSetting, getSetting } from '../db/settings.js';
 import { requireRole, TEACHER_PASSWORD as TEACHER_PASSWORD_DEFAULT, type Session } from '../middleware.js';
 import { getActiveSubject, subjectFeatureEnabled } from '../services/subjects.js';
@@ -194,8 +194,8 @@ export function registerTeacherRoutes(app: express.Express, auth: RequestHandler
       return {
         ...r2,
         stage: stageIndex(exp, thresholds),
-        stageLabel: stageLabelOf(species, exp, thresholds),
-        stageLabels: stageLabelsOf(species),
+        stageLabel: levelLabelOf(getDb(), species, exp, thresholds),
+        stageLabels: globalLevelNames(getDb()),
         thresholds,
       };
     });
@@ -217,7 +217,7 @@ export function registerTeacherRoutes(app: express.Express, auth: RequestHandler
       return;
     }
     const pet = db.prepare(`SELECT * FROM pets WHERE id = ?`).get(req.params.id) as unknown as PetRow;
-    res.json({ ok: true, pet, stage: s, stageLabel: stageLabelOf(getSpecies(db, pet.species_id), thresholds[s], thresholds), thresholds });
+    res.json({ ok: true, pet, stage: s, stageLabel: levelLabelOf(db, getSpecies(db, pet.species_id), thresholds[s], thresholds), thresholds });
   });
 
   // 等级经验要求（教师/管理共用：可修改 7 级阈值）
@@ -244,6 +244,29 @@ export function registerTeacherRoutes(app: express.Express, auth: RequestHandler
     }
     setSetting('exp_thresholds', JSON.stringify(arr));
     res.json({ ok: true, thresholds: arr });
+  });
+
+  // 等级体系（Lv.1~15 可调）：名称 / 数量 / 经验一体读写
+  app.get('/api/levels', auth, teacherOnly, (_req, res) => {
+    const db = getDb();
+    const lv = getLevels(db);
+    res.json({
+      names: lv.names,
+      thresholds: lv.thresholds,
+      maxLevels: 15,
+      custom: hasCustomLevels(db),
+      defaults: { names: ['蛋', '破壳', '幼年', '成长', '成熟', '进化', '传说'], thresholds: DEFAULT_EXP_THRESHOLDS },
+    });
+  });
+  app.put('/api/levels', auth, teacherOnly, (req, res) => {
+    const { names, thresholds } = (req.body ?? {}) as { names?: unknown; thresholds?: unknown };
+    const result = saveLevels(getDb(), names, thresholds);
+    if (!result.ok) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+    const lv = getLevels(getDb());
+    res.json({ ok: true, names: lv.names, thresholds: lv.thresholds });
   });
 
   // 教师端总览：学生数/总积分/平均分/最高分

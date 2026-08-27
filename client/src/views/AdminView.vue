@@ -161,7 +161,7 @@
       <!-- ============ 设置（分区卡片式重排） ============ -->
       <div v-if="tab === 'settings'" class="animate-fadeUp">
         <!-- 分区导航：锚点卡片，避免长页面滚动迷路 -->
-        <div class="flex flex-wrap gap-2 mb-4">
+        <div class="flex flex-wrap gap-2 mb-4 justify-center">
           <button
             v-for="s in settingsSections"
             :key="s.id"
@@ -174,7 +174,7 @@
         </div>
 
         <!-- ── 基础信息 ── -->
-        <div v-show="settingsSection === 'basics'" id="sec-basics" class="grid md:grid-cols-2 gap-5 max-w-4xl">
+        <div v-show="settingsSection === 'basics'" id="sec-basics" class="grid md:grid-cols-2 gap-5 max-w-4xl mx-auto">
           <div class="glass p-5 space-y-4">
             <p class="text-[11px] uppercase tracking-wider text-indigo-200/40">Display</p>
             <h4 class="font-semibold text-indigo-50 -mt-3">展示与文案</h4>
@@ -213,11 +213,12 @@
             <p class="text-[11px] uppercase tracking-wider text-indigo-200/40">Subjects</p>
             <div class="flex items-center gap-3 -mt-3 mb-3 flex-wrap">
               <h4 class="font-semibold text-indigo-50">科目列表与个性化</h4>
-              <div class="ml-auto w-44">
-                <select v-model="setForm.activeSubject" class="input !py-1.5 !text-sm">
+              <label class="ml-auto flex items-center gap-2 text-xs text-indigo-200/70">
+                当前激活科目
+                <select v-model="setForm.activeSubject" class="input !py-1.5 !text-sm !w-36">
                   <option v-for="s in setForm.subjects" :key="s.name" :value="s.name">{{ s.name }}</option>
                 </select>
-              </div>
+              </label>
             </div>
             <div v-for="(s, i) in setForm.subjects" :key="i" class="rounded-xl bg-white/5 border border-white/10 p-3 mb-2 text-sm">
               <div class="flex flex-wrap items-center gap-2">
@@ -239,7 +240,7 @@
         </div>
 
         <!-- ── 同步与备份 ── -->
-        <div v-show="settingsSection === 'sync'" id="sec-sync" class="grid md:grid-cols-2 gap-5 max-w-4xl">
+        <div v-show="settingsSection === 'sync'" id="sec-sync" class="grid md:grid-cols-2 gap-5 max-w-4xl mx-auto">
           <div class="glass p-5 space-y-4">
             <p class="text-[11px] uppercase tracking-wider text-indigo-200/40">Sync & Backup</p>
             <h4 class="font-semibold text-indigo-50 -mt-3">同步 / 备份参数</h4>
@@ -306,7 +307,7 @@
         </div>
 
         <!-- ── 安全与口令 ── -->
-        <div v-show="settingsSection === 'security'" id="sec-security" class="grid md:grid-cols-2 gap-5 max-w-4xl">
+        <div v-show="settingsSection === 'security'" id="sec-security" class="grid md:grid-cols-2 gap-5 max-w-4xl mx-auto">
           <div class="glass p-5 space-y-4">
             <p class="text-[11px] uppercase tracking-wider text-indigo-200/40">Teacher</p>
             <h4 class="font-semibold text-indigo-50 -mt-3">教师口令</h4>
@@ -329,7 +330,7 @@
         </div>
 
         <!-- ── 配置中心 ── -->
-        <div v-show="settingsSection === 'transfer'" id="sec-transfer" class="max-w-4xl">
+        <div v-show="settingsSection === 'transfer'" id="sec-transfer" class="max-w-4xl mx-auto">
           <div class="glass p-6 grid md:grid-cols-2 gap-5">
             <div class="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
               <Download class="w-6 h-6 text-sky-300" />
@@ -347,7 +348,7 @@
         </div>
 
         <!-- ── 数据管理 ── -->
-        <div v-show="settingsSection === 'data'" id="sec-data" class="max-w-4xl space-y-4">
+        <div v-show="settingsSection === 'data'" id="sec-data" class="max-w-4xl mx-auto space-y-4">
           <div class="glass p-5 space-y-3">
             <p class="text-[11px] uppercase tracking-wider text-indigo-200/40">Data</p>
             <h4 class="font-semibold text-indigo-50 -mt-3">数据操作</h4>
@@ -649,6 +650,9 @@ function addSubject(): void {
   setForm.subjects.push({ name: '新科目', sync: true, enabled: { points: true, pets: true, shop: true, rank: true, avatar: true } });
 }
 function removeSubject(i: number): void {
+  const name = setForm.subjects[i]?.name ?? '';
+  if (!confirm(`确定删除科目「${name}」？
+仅从列表移除，学生数据不会删除。`)) return;
   setForm.subjects.splice(i, 1);
   if (!setForm.subjects.some((s: any) => s.name === setForm.activeSubject)) setForm.activeSubject = setForm.subjects[0]?.name || '默认';
 }

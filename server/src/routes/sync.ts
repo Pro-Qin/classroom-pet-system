@@ -377,7 +377,16 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
         const meta = getDb()
           .prepare(`SELECT last_sync_at FROM sync_meta WHERE id = 'global'`)
           .get() as { last_sync_at: string } | undefined;
-        const pushed = await pushDirty(getTransport(), meta?.last_sync_at ?? '');
+        const transport = getTransport();
+        const pushed = await pushDirty(transport, meta?.last_sync_at ?? '');
+        // 本地模式（mock 云端）：推送即完成，直接推进游标，
+        // 健康面板的"待推送变更"随之归零（单机没有另一端需要拉取）
+        if (transport.name === 'mock') {
+          const now = nowIso();
+          getDb()
+            .prepare(`UPDATE sync_meta SET last_push_at=?, last_sync_at=?, updated_at=? WHERE id='global'`)
+            .run(now, now, now);
+        }
         setSetting('sync_last_error', '');
         res.json({ ok: true, pushed });
       } catch {

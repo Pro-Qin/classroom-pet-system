@@ -2,7 +2,7 @@
   <Transition name="undo-pop">
     <button
       v-if="visible"
-      class="fixed bottom-24 right-6 z-50 flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-medium shadow-glow transition-all"
+      class="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium transition-all"
       :class="expired ? 'bg-white/10 text-indigo-200/40 cursor-not-allowed' : 'bg-emerald-500/85 text-white hover:bg-emerald-500 active:scale-95'"
       :disabled="busy"
       :aria-label="buttonLabel"
@@ -11,7 +11,6 @@
       <Loader2 v-if="busy" class="w-4 h-4 animate-spin" />
       <Undo2 v-else class="w-4 h-4" />
       {{ buttonLabel }}
-      <span v-if="!expired" class="text-[10px] opacity-75">{{ remainText }}</span>
     </button>
   </Transition>
 </template>
@@ -22,33 +21,17 @@
  * 有可撤回操作时亮起并显示剩余时间；无操作/超时时保持灰显；
  * 点击后向服务端发起积分冲正（追加反向流水，不改历史）。
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { Loader2, Undo2 } from 'lucide-vue-next';
 import { undoState, isUndoExpired, clearUndoable } from '../composables/undo';
 import { api } from '../api';
 import { toast } from '../composables/toast';
 
-const now = ref(Date.now());
 const busy = ref(false);
-let timer: ReturnType<typeof setInterval> | null = null;
-
-onMounted(() => {
-  timer = setInterval(() => (now.value = Date.now()), 1000);
-});
-onUnmounted(() => {
-  if (timer) clearInterval(timer);
-});
 
 const visible = computed(() => !!undoState.action);
 const expired = computed(() => !undoState.action || isUndoExpired());
 const buttonLabel = computed(() => (undoState.action ? `撤回：${undoState.action.label}` : '暂无可撤回的操作'));
-const remainSec = computed(() =>
-  undoState.action ? Math.max(0, Math.ceil((undoState.action.at + 10 * 60_000 - now.value) / 1000)) : 0
-);
-const remainText = computed(() => {
-  const s = remainSec.value;
-  return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s}s`;
-});
 
 async function onUndo(): Promise<void> {
   const a = undoState.action;

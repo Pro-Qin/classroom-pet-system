@@ -2,7 +2,7 @@ import { getDb, nowIso } from '../db/connection.js';
 import { getSetting, setSetting } from '../db/settings.js';
 import { loadConfig, updateConfig, APP_VERSION } from '../config.js';
 import { applyRow } from '../sync/engine.js';
-import { getExpThresholds } from './pets.js';
+import { getExpThresholds, getLevels, saveLevels, hasCustomLevels } from './pets.js';
 
 /**
  * 统一配置导出 / 导入（分类可选）
@@ -61,7 +61,12 @@ export function exportConfig(keys: string[]): Record<string, unknown> {
     };
   }
   if (want.has('thresholds')) {
-    data.thresholds = { expThresholds: getExpThresholds(getDb()) };
+    const levels = getLevels(getDb());
+    data.thresholds = {
+      expThresholds: getExpThresholds(getDb()),
+      // 仅在配置过自定义等级体系时导出（Lv.1~15 名称+经验）
+      ...(hasCustomLevels(getDb()) ? { levels: { names: levels.names, thresholds: levels.thresholds } } : {}),
+    };
   }
   if (want.has('subjects')) {
     data.subjects = {
@@ -152,18 +157,24 @@ function importSettingsGroup(key: string, payload: unknown): ImportSummary | nul
       return { category: key, detail: '展示与文案已更新' };
     }
     case 'thresholds': {
-      const arr = (p as { expThresholds?: unknown }).expThresholds;
+      const p2 = p as { expThresholds?: unknown; levels?: { names?: unknown; thresholds?: unknown } };
+      let applied = '';
       if (
-        Array.isArray(arr) &&
-        arr.length === 7 &&
-        arr.every((x) => typeof x === 'number' && Number.isFinite(x))
+        Array.isArray(p2.expThresholds) &&
+        p2.expThresholds.length === 7 &&
+        p2.expThresholds.every((x) => typeof x === 'number' && Number.isFinite(x))
       ) {
-        const clean = arr.map((x) => Math.max(0, Math.round(x as number)));
+        const clean = p2.expThresholds.map((x) => Math.max(0, Math.round(x as number)));
         clean[0] = 0;
         setSetting('exp_thresholds', JSON.stringify(clean));
-        return { category: key, detail: '经验阈值已更新' };
+        applied = '经验阈值已更新';
       }
-      return { category: key, detail: '格式无效，已跳过' };
+      if (p2.levels && typeof p2.levels === 'object') {
+        const r = saveLevels(getDb(), p2.levels.names, p2.levels.thresholds);
+        if (!r.ok) return { category: key, detail: r.error ?? '等级体系无效，已跳过' };
+        applied = applied ? '经验阈值与等级体系已更新' : '等级体系已更新';
+      }
+      return { category: key, detail: applied || '格式无效，已跳过' };
     }
     case 'subjects': {
       if (typeof p.activeSubject === 'string') setSetting('active_subject', p.activeSubject.trim());

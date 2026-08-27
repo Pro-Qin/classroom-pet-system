@@ -1,5 +1,5 @@
 import { getDb, newId, tx, nowIso, type SqliteDb } from '../db/connection.js';
-import { getExpThresholds, stageIndex, stageLabelOf } from './pets.js';
+import { getExpThresholds, stageIndex, levelLabelOf } from './pets.js';
 import { getActiveSubject } from './subjects.js';
 
 export interface PointApplyResult {
@@ -176,14 +176,14 @@ export function getLeaderboard(db: SqliteDb, limit = 50): LeaderboardRow[] {
       rank = i + 1;
       prev = r.points;
     }
-    const speciesLike = { stage_labels: r.species_stage_labels ?? '[]' } as Parameters<typeof stageLabelOf>[0];
+    const speciesLike = { stage_labels: r.species_stage_labels ?? '[]' } as Parameters<typeof levelLabelOf>[1];
     const stage = stageIndex(r.petExp ?? 0, thresholds);
     return {
       ...r,
       rank,
       petEmoji: r.petEmoji ?? '🐣',
       petStage: r.petName ? stage : null,
-      petStageLabel: r.petName ? stageLabelOf(speciesLike, r.petExp ?? 0, thresholds) : null,
+      petStageLabel: r.petName ? levelLabelOf(db, speciesLike, r.petExp ?? 0, thresholds) : null,
     };
   });
 }

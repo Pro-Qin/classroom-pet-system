@@ -135,12 +135,21 @@
       <div v-if="tab === 'points'" class="grid lg:grid-cols-3 gap-6 animate-fadeUp">
         <!-- 学生选择 -->
         <div class="glass p-5 lg:col-span-2">
-          <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center justify-between mb-3 gap-2">
             <h3 class="font-bold text-indigo-50 flex items-center gap-2">
               <Users class="w-5 h-5 text-sky-300" /> 选择学生
               <span class="pill bg-indigo-500/25 text-indigo-200">{{ selected.size }} 人</span>
             </h3>
-            <input v-model="searchKey" class="input !w-44 !py-2 text-sm" placeholder="搜索姓名…" />
+            <label class="flex items-center gap-1.5 text-xs text-indigo-200/80 cursor-pointer shrink-0 select-none">
+              <input
+                type="checkbox"
+                class="accent-indigo-400 w-4 h-4"
+                :checked="allFilteredSelected"
+                @change="toggleSelectAll"
+              />
+              全选{{ searchKey ? '（当前筛选）' : '' }}
+            </label>
+            <input v-model="searchKey" class="input !w-40 !py-2 text-sm" placeholder="搜索姓名…" />
             <select v-model="sortMode" class="input !w-36 !py-2 text-sm">
               <option value="default">默认排序</option>
               <option value="points">按积分降序</option>
@@ -218,21 +227,16 @@
             </div>
             <input v-model="reason" class="input !py-1.5 !text-sm mt-3" placeholder="加减分理由（必填）" @keyup.enter="applyPoints" />
             <p class="mt-1 text-xs text-indigo-200/50">
-              好麻烦？
-              <button class="underline text-fuchsia-300 hover:text-fuchsia-200" @click="presetAddOpen = true">试试添加快捷理由！</button>
+              想把当前分值+理由存下来复用？
+              <button class="underline text-fuchsia-300 hover:text-fuchsia-200" @click="quickSavePreset">一键存为快捷理由！</button>
             </p>
             <p v-if="pointsValidation" class="mt-1 text-xs text-amber-300">{{ pointsValidation }}</p>
             <div class="flex gap-2 mt-3">
               <button class="btn btn-gold flex-1" @click="applyPoints">
                 <Send class="w-4 h-4" /> 确认{{ delta > 0 ? '加分' : delta < 0 ? '扣分' : '' }}（{{ selected.size }} 人）
               </button>
-              <button v-if="!pointsValidation" class="btn btn-ghost shrink-0" title="把当前分值与理由存为快捷选项" @click="presetAddOpen = true">
-                <Plus class="w-4 h-4" /> 添加快捷理由
-              </button>
-            </div>
-            <div class="mt-3">
-              <button class="btn btn-ghost w-full !py-2 text-sm" @click="bulkReward">
-                <Gift class="w-4 h-4" /> 批量发奖：给当前筛选的全部学生 +5
+              <button v-if="!pointsValidation" class="btn btn-ghost shrink-0" title="把当前分值与理由存为快捷选项" @click="quickSavePreset">
+                <Plus class="w-4 h-4" /> 存为快捷理由
               </button>
             </div>
           </div>
@@ -248,7 +252,10 @@
                 v-for="p in presets"
                 :key="p.id"
                 class="pill !px-3 !py-1.5 cursor-pointer transition-colors group"
-                :class="p.delta >= 0 ? 'bg-emerald-500/15 text-emerald-200 border border-emerald-400/30 hover:bg-emerald-500/25' : 'bg-rose-500/15 text-rose-200 border border-rose-400/30 hover:bg-rose-500/25'"
+                :class="[
+                  p.delta >= 0 ? 'bg-emerald-500/15 text-emerald-200 border border-emerald-400/30 hover:bg-emerald-500/25' : 'bg-rose-500/15 text-rose-200 border border-rose-400/30 hover:bg-rose-500/25',
+                  p.id === presetHighlightId ? 'preset-pop ring-2 ring-amber-300' : '',
+                ]"
                 @click="usePreset(p)"
               >
                 {{ p.label }} {{ p.delta > 0 ? '+' : '' }}{{ p.delta }}
@@ -458,6 +465,8 @@
 
     <!-- 底部操作栏（一体机大按钮） -->
     <div class="bottom-bar">
+      <UndoButton />
+      <div class="flex-1" />
       <button class="btn btn-ghost !text-base" @click="goScreen">
         <MonitorPlay class="w-5 h-5" /> 大屏
       </button>
@@ -465,8 +474,6 @@
         <LogOut class="w-5 h-5" /> 退出登录
       </button>
     </div>
-
-    <UndoButton />
   </div>
 </template>
 
@@ -691,7 +698,12 @@ async function applyPoints(): Promise<void> {
       body: JSON.stringify({ studentIds: targetIds, delta: delta.value, reason: reason.value.trim() }),
     });
     toast(`已对 ${r.applied} 名学生${delta.value >= 0 ? '加' : '扣'} ${Math.abs(delta.value)} 分`, 'success');
-    // 撤回按钮：记录本次产生的流水 id，底部右侧按提示冲正
+    // 乐观更新：左侧学生积分立即用服务端返回的新值刷新，不等重新拉取
+    for (const ev of r.events ?? []) {
+      const stu = students.value.find((s) => s.id === ev.studentId);
+      if (stu) stu.points = ev.newPoints;
+    }
+    // 撤回按钮：记录本次产生的流水 id，底部栏按提示冲正
     const ids = (r.events ?? []).map((e) => e.eventId);
     if (ids.length > 0) {
       const label =
@@ -713,16 +725,47 @@ async function applyPoints(): Promise<void> {
     toast((e as Error).message, 'error');
   }
 }
-async function bulkReward(): Promise<void> {
-  if (filteredStudents.value.length === 0) {
-    toast('当前没有可发奖的学生', 'error');
+/** 全选 / 取消全选（针对当前筛选出的学生） */
+const allFilteredSelected = computed(
+  () => filteredStudents.value.length > 0 && filteredStudents.value.every((s) => selected.has(s.id))
+);
+function toggleSelectAll(): void {
+  if (allFilteredSelected.value) {
+    for (const s of filteredStudents.value) selected.delete(s.id);
+  } else {
+    for (const s of filteredStudents.value) selected.add(s.id);
+  }
+}
+
+/** 新建预设的高亮 id（强调动画用） */
+const presetHighlightId = ref('');
+
+/**
+ * 一键把当前「分值 + 理由」存为快捷预设：
+ * 不再展开表单，直接入列并高亮新项。
+ */
+async function quickSavePreset(): Promise<void> {
+  const label = reason.value.trim();
+  if (!label) {
+    toast('请先填写理由，再一键存为快捷理由', 'error');
     return;
   }
-  selected.clear();
-  for (const s of filteredStudents.value) selected.add(s.id);
-  delta.value = 5;
-  reason.value = '批量发奖';
-  await applyPoints();
+  if (!delta.value) {
+    toast('分值为 0，无法保存', 'error');
+    return;
+  }
+  try {
+    const r = await api<{ id: string }>('/presets', {
+      method: 'POST',
+      body: JSON.stringify({ label, delta: delta.value, reason: label }),
+    });
+    await loadPresets();
+    presetHighlightId.value = r.id;
+    setTimeout(() => (presetHighlightId.value = ''), 2600);
+    toast(`已存为快捷理由「${label} ${delta.value > 0 ? '+' : ''}${delta.value}」`, 'success');
+  } catch (e) {
+    toast((e as Error).message, 'error');
+  }
 }
 
 async function giveExp(s: Student): Promise<void> {
@@ -890,3 +933,18 @@ onUnmounted(() => {
   document.removeEventListener('click', onDocClick);
 });
 </script>
+
+<style scoped>
+/* 新建快捷预设的强调动画：金圈脉冲 + 轻微放大 */
+.preset-pop {
+  animation: preset-pop 0.9s ease-out 2;
+}
+@keyframes preset-pop {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(252, 211, 77, 0.7); }
+  50% { transform: scale(1.12); box-shadow: 0 0 0 10px rgba(252, 211, 77, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(252, 211, 77, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .preset-pop { animation: none; }
+}
+</style>

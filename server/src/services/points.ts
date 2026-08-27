@@ -64,6 +64,7 @@ export interface LeaderboardRow {
   rank: number;
   petName: string | null;
   petEmoji: string;
+  petAvatar: string | null;
   petExp: number;
 }
 
@@ -72,7 +73,7 @@ export function getLeaderboard(db: SqliteDb, limit = 50): LeaderboardRow[] {
   const rows = db
     .prepare(
       `SELECT s.id, s.name, s.class_name, s.points,
-              p.name AS petName, p.exp AS petExp,
+              p.name AS petName, p.exp AS petExp, p.avatar_path AS petAvatar,
               sp.emoji AS petEmoji, sp.stage_labels AS species_stage_labels
        FROM students s
        LEFT JOIN pets p ON p.student_id = s.id AND p.deleted_at IS NULL
@@ -88,6 +89,7 @@ export function getLeaderboard(db: SqliteDb, limit = 50): LeaderboardRow[] {
     points: number;
     petName: string | null;
     petExp: number;
+    petAvatar: string | null;
     petEmoji: string;
     species_stage_labels: string | null;
   }[];

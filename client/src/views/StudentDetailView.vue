@@ -86,10 +86,11 @@
                   </TransitionGroup>
                 </div>
                 <img
-                  v-if="pet.avatarPath"
+                  v-if="pet.avatarPath && !petAvatarFailed.has(pet.id)"
                   :src="pet.avatarPath"
                   class="w-full h-full rounded-full object-cover"
                   alt="宠物头像"
+                  @error="petAvatarFailed.add(pet.id)"
                 />
                 <span v-else class="text-6xl drop-shadow-lg">{{ pet.species?.emoji }}</span>
                 <button
@@ -376,7 +377,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   ChevronLeft, Star, PawPrint, Edit3, ImagePlus, Store, Coins, Backpack, History, Trophy, X, Check,
@@ -468,6 +469,7 @@ function petInteract(): void {
 }
 
 const pet = computed(() => detail.value?.pet ?? null);
+const petAvatarFailed = reactive(new Set<string>());
 
 /** 宠物心情气泡里的小提示（引导互动） */
 const moodHint = computed(() => {

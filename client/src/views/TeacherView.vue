@@ -166,10 +166,11 @@
                 <Check class="w-4 h-4" />
               </span>
               <span
-                class="w-9 h-9 rounded-full grid place-items-center text-base shrink-0"
+                class="w-9 h-9 rounded-full grid place-items-center text-base shrink-0 overflow-hidden"
                 :style="{ background: `linear-gradient(135deg, ${s.speciesColorFrom}, ${s.speciesColorTo})` }"
               >
-                {{ s.petEmoji || s.name.slice(0, 1) }}
+                <template v-if="s.petAvatar && !avatarFailed.has(s.id)"><img :src="s.petAvatar" class="w-full h-full object-cover" alt="" @error="avatarFailed.add(s.id)" /></template>
+                <template v-else>{{ s.petEmoji || s.name.slice(0, 1) }}</template>
               </span>
               <div class="min-w-0">
                 <p class="text-sm font-semibold text-indigo-50 truncate">{{ s.name }}</p>
@@ -317,7 +318,10 @@
                 background: `linear-gradient(180deg, ${podiumColor(p.rank)}, #1b2447)`,
               }"
             >
-              <span class="text-4xl absolute -top-8" :class="p.rank === 1 ? 'animate-bounce-soft' : ''">{{ p.petEmoji }}</span>
+              <span class="text-4xl absolute -top-8" :class="p.rank === 1 ? 'animate-bounce-soft' : ''">
+                <template v-if="p.petAvatar && !avatarFailed.has(p.id)"><img :src="p.petAvatar" class="w-14 h-14 rounded-full object-cover ring-4" :class="p.rank === 1 ? 'ring-amber-400' : p.rank === 2 ? 'ring-slate-300' : 'ring-orange-400'" alt="" @error="avatarFailed.add(p.id)" /></template>
+                <template v-else>{{ p.petEmoji }}</template>
+              </span>
             </div>
             <p class="mt-2 font-bold text-indigo-50">{{ p.name }}</p>
             <p class="text-sm text-amber-300 font-semibold">{{ p.points }} {{ pointsUnit }}</p>
@@ -330,7 +334,8 @@
             <p class="text-xs text-indigo-200/60 mb-2 flex items-center gap-1.5"><TrendingUp class="w-3.5 h-3.5" /> 第 4 - 5 名</p>
             <div v-for="p in floatingLeft" :key="p.id" class="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
               <span class="w-7 h-7 rounded-lg bg-white/8 grid place-items-center text-xs font-bold text-indigo-200/70">{{ p.rank }}</span>
-              <span class="text-xl">{{ p.petEmoji }}</span>
+              <template v-if="p.petAvatar && !avatarFailed.has(p.id)"><img :src="p.petAvatar" class="w-7 h-7 rounded-full object-cover" alt="" @error="avatarFailed.add(p.id)" /></template>
+              <span v-else class="text-xl">{{ p.petEmoji }}</span>
               <span class="font-medium text-indigo-50 truncate">{{ p.name }}</span>
               <span class="ml-auto font-bold text-amber-300">{{ p.points }}</span>
             </div>
@@ -339,7 +344,8 @@
             <p class="text-xs text-indigo-200/60 mb-2 flex items-center gap-1.5"><TrendingUp class="w-3.5 h-3.5" /> 第 6 - 7 名</p>
             <div v-for="p in floatingRight" :key="p.id" class="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
               <span class="w-7 h-7 rounded-lg bg-white/8 grid place-items-center text-xs font-bold text-indigo-200/70">{{ p.rank }}</span>
-              <span class="text-xl">{{ p.petEmoji }}</span>
+              <template v-if="p.petAvatar && !avatarFailed.has(p.id)"><img :src="p.petAvatar" class="w-7 h-7 rounded-full object-cover" alt="" @error="avatarFailed.add(p.id)" /></template>
+              <span v-else class="text-xl">{{ p.petEmoji }}</span>
               <span class="font-medium text-indigo-50 truncate">{{ p.name }}<span v-if="p.petStageLabel" class="ml-1 text-fuchsia-300/70 text-[10px]">Lv.{{ (p.petStage ?? 0) + 1 }}</span></span>
               <span class="ml-auto font-bold text-amber-300">{{ p.points }}</span>
             </div>
@@ -363,8 +369,13 @@
                   <span class="w-7 h-7 inline-grid place-items-center rounded-lg text-xs font-bold bg-white/8 text-indigo-200/70">{{ r.rank }}</span>
                 </td>
                 <td class="px-5 py-3 font-medium text-indigo-50">{{ r.name }}</td>
-                <td class="px-5 py-3 text-indigo-200/70">
-                {{ r.petName ? r.petEmoji + ' ' + r.petName : '—' }}<span v-if="r.petName && r.petStageLabel" class="ml-1 text-fuchsia-300/80 text-xs">Lv.{{ (r.petStage ?? 0) + 1 }} {{ r.petStageLabel }}</span>
+                <td class="px-5 py-3 text-indigo-200/70 flex items-center gap-2">
+                <template v-if="r.petName">
+                  <template v-if="r.petAvatar && !avatarFailed.has(r.id)"><img :src="r.petAvatar" class="w-7 h-7 rounded-full object-cover shrink-0" alt="" @error="avatarFailed.add(r.id)" /></template>
+                  <span v-else>{{ r.petEmoji }}</span>
+                  <span>{{ r.petName }}</span><span v-if="r.petStageLabel" class="ml-1 text-fuchsia-300/80 text-xs">Lv.{{ (r.petStage ?? 0) + 1 }} {{ r.petStageLabel }}</span>
+                </template>
+                <span v-else>—</span>
               </td>
                 <td class="px-5 py-3 text-right font-bold text-amber-300">{{ r.points }}</td>
               </tr>
@@ -391,9 +402,9 @@
             :class="expFlashId === s.id ? '!border-fuchsia-400/60 exp-flash' : ''"
           >
             <span
-              class="w-10 h-10 rounded-full grid place-items-center text-lg shrink-0"
+              class="w-10 h-10 rounded-full grid place-items-center text-lg shrink-0 overflow-hidden"
               :style="{ background: `linear-gradient(135deg, ${s.speciesColorFrom}, ${s.speciesColorTo})` }"
-            >{{ s.petEmoji || s.name.slice(0, 1) }}</span>
+            ><template v-if="s.petAvatar && !avatarFailed.has(s.id)"><img :src="s.petAvatar" class="w-full h-full object-cover" alt="" @error="avatarFailed.add(s.id)" /></template><template v-else>{{ s.petEmoji || s.name.slice(0, 1) }}</template></span>
             <div class="flex-1 min-w-0">
               <p class="text-sm font-semibold text-indigo-50 truncate">{{ s.name }}</p>
               <p class="text-xs text-indigo-200/60">
@@ -476,10 +487,10 @@ interface Student {
   id: string; name: string; class_name: string; points: number;
   petId: string | null; petName: string | null; petExp: number | null;
   petStage: number | null; petStageLabel: string | null; petNextExp: number | null;
-  petEmoji: string | null; speciesColorFrom: string; speciesColorTo: string;
+  petEmoji: string | null; petAvatar: string | null; speciesColorFrom: string; speciesColorTo: string;
 }
 interface Preset { id: string; label: string; delta: number; reason: string; }
-interface RankRow { id: string; name: string; class_name: string; points: number; rank: number; petName: string | null; petEmoji: string; petExp: number; petStage: number | null; petStageLabel: string | null; }
+interface RankRow { id: string; name: string; class_name: string; points: number; rank: number; petName: string | null; petEmoji: string; petAvatar: string | null; petExp: number; petStage: number | null; petStageLabel: string | null; }
 
 const router = useRouter();
 const { pointsUnit } = useSettings();
@@ -498,6 +509,7 @@ const tabs: { key: 'points' | 'rank' | 'exp' | 'history' | 'items' | 'rules' | '
 const students = ref<Student[]>([]);
 const presets = ref<Preset[]>([]);
 const board = ref<RankRow[]>([]);
+const avatarFailed = reactive(new Set<string>());
 const stats = reactive<Record<string, number>>({});
 const trendData = ref<{ day: string; delta: number }[]>([]);
 const maxTrend = computed(() => Math.max(1, ...trendData.value.map((p) => Math.abs(p.delta))));

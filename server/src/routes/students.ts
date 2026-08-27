@@ -29,7 +29,7 @@ function listStudents(db: ReturnType<typeof getDb>) {
   const rows = db
     .prepare(
       `SELECT s.id, s.student_no, s.name, s.class_name, s.points,
-              p.id AS pet_id, p.name AS pet_name, p.exp AS pet_exp,
+              p.id AS pet_id, p.name AS pet_name, p.exp AS pet_exp, p.avatar_path AS pet_avatar,
               sp.emoji AS pet_emoji, sp.color_from, sp.color_to, sp.stage_labels AS species_stage_labels
        FROM students s
        LEFT JOIN pets p ON p.student_id = s.id AND p.deleted_at IS NULL
@@ -46,6 +46,7 @@ function listStudents(db: ReturnType<typeof getDb>) {
     pet_id: string | null;
     pet_name: string | null;
     pet_exp: number | null;
+    pet_avatar: string | null;
     pet_emoji: string | null;
     color_from: string | null;
     color_to: string | null;
@@ -68,6 +69,7 @@ function listStudents(db: ReturnType<typeof getDb>) {
       petStageLabel: r.pet_id ? stageLabelOf(speciesLike, r.pet_exp ?? 0, thresholds) : null,
       petNextExp: r.pet_id ? (thresholds[stage + 1] ?? thresholds[stage]) : null,
       petEmoji: r.pet_emoji,
+      petAvatar: r.pet_avatar,
       speciesColorFrom: r.color_from ?? '#6366f1',
       speciesColorTo: r.color_to ?? '#8b5cf6',
     };

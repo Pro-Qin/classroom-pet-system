@@ -17,7 +17,12 @@
                 class="rounded-t-3xl relative grid place-items-center mx-auto max-w-56"
                 :style="{ height: p.rank === 1 ? '12rem' : p.rank === 2 ? '9.5rem' : '7rem', background: `linear-gradient(180deg, ${podiumColor(p.rank)}88, #1b2447)` }"
               >
-                <span class="text-7xl absolute -top-16" :class="p.rank === 1 ? 'animate-bounce-soft' : ''">{{ p.petEmoji }}</span>
+                <span class="text-7xl absolute -top-16" :class="p.rank === 1 ? 'animate-bounce-soft' : ''">
+                  <template v-if="p.petAvatar && !avatarFailed.has(p.id)">
+                    <img :src="p.petAvatar" class="w-20 h-20 rounded-full object-cover ring-4" :class="p.rank === 1 ? 'ring-amber-400' : p.rank === 2 ? 'ring-slate-300' : 'ring-orange-400'" alt="" @error="avatarFailed.add(p.id)" />
+                  </template>
+                  <template v-else>{{ p.petEmoji }}</template>
+                </span>
                 <span
                   class="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-12 rounded-full grid place-items-center text-2xl font-black"
                   :class="p.rank === 1 ? 'bg-amber-400 text-amber-950' : p.rank === 2 ? 'bg-slate-300 text-slate-700' : 'bg-orange-400 text-orange-950'"
@@ -35,7 +40,11 @@
                   <td class="px-6 py-4 w-20 text-2xl font-black text-indigo-200/80">{{ r.rank }}</td>
                   <td class="px-6 py-4 font-semibold text-indigo-50 text-xl">{{ r.name }}</td>
                   <td class="px-6 py-4 text-indigo-200/70">{{ r.class_name }}</td>
-                  <td class="px-6 py-4 text-indigo-200/70 text-xl">{{ r.petEmoji }} {{ r.petName ?? '' }}<span v-if="r.petStageLabel" class="ml-2 text-base text-fuchsia-300/80">Lv.{{ (r.petStage ?? 0) + 1 }}</span></td>
+                  <td class="px-6 py-4 text-indigo-200/70 text-xl flex items-center gap-2">
+                    <template v-if="r.petAvatar && !avatarFailed.has(r.id)"><img :src="r.petAvatar" class="w-8 h-8 rounded-full object-cover shrink-0" alt="" @error="avatarFailed.add(r.id)" /></template>
+                    <span v-else>{{ r.petEmoji }}</span>
+                    <span>{{ r.petName ?? '' }}</span><span v-if="r.petStageLabel" class="ml-2 text-base text-fuchsia-300/80">Lv.{{ (r.petStage ?? 0) + 1 }}</span>
+                  </td>
                   <td class="px-6 py-4 text-right text-2xl font-bold text-amber-300">{{ r.points }}</td>
                 </tr>
               </tbody>
@@ -87,7 +96,7 @@ import { api } from '../api';
 import { useSettings } from '../composables/settings';
 import { getLocalSetting } from '../composables/useLocalSettings';
 
-interface RankRow { id: string; name: string; class_name: string; points: number; rank: number; petName: string | null; petEmoji: string; petExp: number; petStage: number | null; petStageLabel: string | null; }
+interface RankRow { id: string; name: string; class_name: string; points: number; rank: number; petName: string | null; petEmoji: string; petAvatar: string | null; petExp: number; petStage: number | null; petStageLabel: string | null; }
 interface StudentCard { id: string; name: string; class_name: string; petId: string | null; petName: string | null; petEmoji: string | null; speciesColorFrom: string; speciesColorTo: string; }
 interface PetWallItem extends StudentCard {
   petExp: number;

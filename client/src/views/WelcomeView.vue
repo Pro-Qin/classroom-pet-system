@@ -44,6 +44,8 @@
         </h2>
         <p class="mt-2 text-sm text-indigo-200/70">
           用于多台设备间的数据同步（一体机 ↔ 教师机）。留空则使用<strong>本地模式</strong>（数据仅保存在本机，仍可正常使用）。
+          没有账号/不会配置？
+          <button class="underline text-sky-300 hover:text-sky-200" @click="openSupabaseHelp">看配置教程 →</button>
         </p>
         <div class="mt-6 space-y-4">
           <div>
@@ -193,6 +195,11 @@ const dlgOpen = ref(false);
 const importFile = ref<HTMLInputElement | null>(null);
 function openImport(): void {
   importFile.value?.click();
+}
+/** 教程页以新标签打开（不丢向导已填内容），返回时关闭标签即可 */
+function openSupabaseHelp(): void {
+  const r = router.resolve({ path: '/help/supabase', query: { from: 'wizard' } });
+  window.open(r.href, '_blank');
 }
 async function onImportFile(e: Event): Promise<void> {
   const file = (e.target as HTMLInputElement).files?.[0];

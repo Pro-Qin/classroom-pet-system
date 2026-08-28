@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import WelcomeView from './views/WelcomeView.vue';
+import HelpSupabaseView from './views/HelpSupabaseView.vue';
 import PrepView from './views/PrepView.vue';
 import LoginView from './views/LoginView.vue';
 import StudentDetailView from './views/StudentDetailView.vue';
@@ -13,6 +14,7 @@ export const router = createRouter({
   routes: [
     { path: '/', redirect: '/login' },
     { path: '/welcome', component: WelcomeView },
+    { path: '/help/supabase', component: HelpSupabaseView },
     { path: '/prep', component: PrepView },
     { path: '/login', component: LoginView },
     { path: '/students', redirect: '/login' },

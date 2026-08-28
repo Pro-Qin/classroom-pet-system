@@ -118,6 +118,8 @@ async function boot(): Promise<void> {
       router.replace('/login');
     } else if (path === '/' || path === '/login') {
       if (!prepDone) router.replace('/prep');
+    } else if (path.startsWith('/help/')) {
+      // 帮助页不受 prep 门禁限制（欢迎向导可直接跳转查看）
     }
   } catch {
     // 服务端不可达：停留在当前路由（登录页会展示错误）

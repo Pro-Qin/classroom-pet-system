@@ -14,7 +14,11 @@ let pushPending = false;
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
 let pushInFlight = false;
 
-/** 每次数据操作后自动把本地变更推送到云端（fire-and-forget，去抖合并，避免 429 洪）。 */
+/** 每次数据操作后【立即】把本地变更推送到云端。
+ *  用户可能下一秒就关浏览器（服务端随心跳停止），因此不做秒级去抖：
+ *  推送在途时的新写操作合并为 pending，完成后立即补推；被 429 时按
+ *  服务端 retryAfterSec 延时补推。极端情况没推完也不会丢数据：
+ *  本地 SQLite 已落盘，下次启动会自动补推上云。 */
 function scheduleSyncPush(delayMs = 2000): void {
   if (pushInFlight) {
     // 已经有推送在途：标记一个待推送，等本次完成后立即再推一次。

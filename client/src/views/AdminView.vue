@@ -265,7 +265,10 @@
           <div class="glass p-5 space-y-4 self-start">
             <p class="text-[11px] uppercase tracking-wider text-indigo-200/40">Cloud Config</p>
             <h4 class="font-semibold text-indigo-50 -mt-3">云端连接（Supabase）</h4>
-            <p class="text-xs text-indigo-200/60">写入需要 Service Role Key（仅保存在本机）。<strong>留空的字段保持不变</strong>。</p>
+            <p class="text-xs text-indigo-200/60">
+              写入需要 Service Role Key（仅保存在本机）。<strong>留空的字段保持不变</strong>。
+              <button class="underline text-sky-300 hover:text-sky-200" @click="openSupabaseHelp">配置教程 →</button>
+            </p>
             <div>
               <label class="label">Project URL</label>
               <input v-model="syncForm.supabaseUrl" class="input" placeholder="https://xxxx.supabase.co" />
@@ -468,6 +471,11 @@ function openTransfer(mode: 'export' | 'import'): void {
 }
 async function onTransferDone(): Promise<void> {
   await Promise.all([loadAll(), loadAudit()]);
+}
+
+function openSupabaseHelp(): void {
+  const r = router.resolve({ path: '/help/supabase' });
+  window.open(r.href, '_blank');
 }
 
 const stats = reactive<Record<string, number>>({});

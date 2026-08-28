@@ -1,3 +1,11 @@
+-- 班级级配置（跨端同步）：等级体系等少量键值
+create table if not exists app_settings (
+  key text primary key,
+  value text not null,
+  updated_at text not null
+);
+alter table app_settings enable row level security;
+
 -- ============================================================
 -- 校园宠物乐园 · Supabase 云端表结构
 -- 在 Supabase SQL Editor 中执行本文件，一次性创建全部同步表。

@@ -57,11 +57,23 @@ export interface LevelConfig {
 
 function readSettingsJson(db: SqliteDb, key: string): unknown {
   try {
-    const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
+    // 优先 app_settings（参与跨端同步的班级级配置），回退旧 settings 表
+    const row =
+      (db.prepare(`SELECT value FROM app_settings WHERE key = ?`).get(key) as { value: string } | undefined) ??
+      (db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined);
     return row ? (JSON.parse(row.value) as unknown) : undefined;
   } catch {
     return undefined;
   }
+}
+
+/** 写入参与同步的班级级配置（app_settings；旧 settings 双写一个过渡版本以兼容仍在旧读法的路径） */
+function writeAppSetting(db: SqliteDb, key: string, value: string): void {
+  const now = nowIso();
+  db.prepare(
+    `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+  ).run(key, value, now);
 }
 
 /** 读取等级体系：levels_config（新，含名称）→ 旧 exp_thresholds（7级）→ 默认 15 级成长线 */
@@ -117,11 +129,10 @@ export function saveLevels(db: SqliteDb, names: unknown, thresholds: unknown): {
   for (let i = 1; i < t.length; i++) {
     if (t[i] <= t[i - 1]) return { ok: false, error: '等级经验要求必须逐级递增' };
   }
-  setSettingSafe(
-    db,
-    'levels_config',
-    JSON.stringify({ names: (names as string[]).map((n) => (n as string).trim().slice(0, 12)), thresholds: t })
-  );
+  // 写入 app_settings（随同步跨端）；旧 settings 同步双写，兼容回退读取
+  const payload = JSON.stringify({ names: (names as string[]).map((n) => (n as string).trim().slice(0, 12)), thresholds: t });
+  writeAppSetting(db, 'levels_config', payload);
+  setSettingSafe(db, 'levels_config', payload);
   return { ok: true };
 }
 
@@ -176,7 +187,9 @@ export function stageLabelOf(species: SpeciesRow | undefined, exp: number, thres
 /** 是否配置过自定义等级体系（levels_config 存在即视为是） */
 export function hasCustomLevels(db?: SqliteDb): boolean {
   const d = db ?? getDb();
-  const row = d.prepare(`SELECT value FROM settings WHERE key = 'levels_config'`).get() as { value: string } | undefined;
+  const row =
+    (d.prepare(`SELECT value FROM app_settings WHERE key = 'levels_config'`).get() as { value: string } | undefined) ??
+    (d.prepare(`SELECT value FROM settings WHERE key = 'levels_config'`).get() as { value: string } | undefined);
   return !!row;
 }
 
@@ -377,7 +390,9 @@ export function settleAllPets(db?: SqliteDb): { settled: number; expTotal: numbe
   let settled = 0;
   let expTotal = 0;
   const ts = nowIso();
-  const stmt = d.prepare(`UPDATE pets SET exp=?, last_tick_at=?, updated_at=? WHERE id=?`);
+  // 乐观锁：仅当 last_tick_at 仍是读取到的旧值时写入 ——
+  // 双设备同时结算同一只宠物时只有一方生效，另一方自动空转，杜绝经验双计/拉锯
+  const stmt = d.prepare(`UPDATE pets SET exp=?, last_tick_at=?, updated_at=? WHERE id=? AND last_tick_at=?`);
   for (const r of pets) {
     const last = new Date(r.last_tick_at).getTime();
     const hours = (Date.now() - last) / 3_600_000;
@@ -385,9 +400,11 @@ export function settleAllPets(db?: SqliteDb): { settled: number; expTotal: numbe
     const daily = dailyByStudent.get(r.student_id) ?? RANK_EXP_BASE;
     const gain = Math.round((hours / 24) * daily * 10) / 10; // 保留 1 位小数
     if (gain <= 0) continue;
-    stmt.run(Math.max(0, (r.exp ?? 0) + gain), ts, ts, r.id);
-    settled += 1;
-    expTotal += gain;
+    const res = stmt.run(Math.max(0, (r.exp ?? 0) + gain), ts, ts, r.id, r.last_tick_at);
+    if (res.changes > 0) {
+      settled += 1;
+      expTotal += gain;
+    }
   }
   return { settled, expTotal };
 }

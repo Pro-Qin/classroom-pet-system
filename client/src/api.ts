@@ -15,7 +15,7 @@ let pushTimer: ReturnType<typeof setTimeout> | null = null;
 let pushInFlight = false;
 
 /** 每次数据操作后自动把本地变更推送到云端（fire-and-forget，去抖合并，避免 429 洪）。 */
-function scheduleSyncPush(): void {
+function scheduleSyncPush(delayMs = 2000): void {
   if (pushInFlight) {
     // 已经有推送在途：标记一个待推送，等本次完成后立即再推一次。
     pushPending = true;
@@ -26,15 +26,23 @@ function scheduleSyncPush(): void {
     pushTimer = null;
     pushInFlight = true;
     fetch(BASE + '/sync/push', { method: 'POST' })
-      .catch(() => {})
+      .then(async (res) => {
+        // 被节流/失败：按服务端给的重试秒数补推一轮（只补一轮，防风暴）。
+        // 之前这里是静默吞掉——写后推送被 429 丢弃后要等下一次写操作才带出来，
+        // 多端场景表现为"我加了分另一端没收到"。
+        if (!res.ok) pushPending = true;
+      })
+      .catch(() => {
+        pushPending = true; // 网络抖动同样补推一轮
+      })
       .finally(() => {
         pushInFlight = false;
         if (pushPending) {
           pushPending = false;
-          scheduleSyncPush();
+          scheduleSyncPush(2500);
         }
       });
-  }, 2000);
+  }, delayMs);
 }
 
 export async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {

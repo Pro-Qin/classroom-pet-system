@@ -6,7 +6,10 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** server/ 目录（src 或 dist 都在其下） */
 export const ROOT = path.resolve(__dirname, '..');
-export const DATA_DIR = path.join(ROOT, 'data');
+/** 数据目录：可用 PET_DATA_DIR 覆盖（双端/多实例联调时各起一套独立数据） */
+export const DATA_DIR = process.env.PET_DATA_DIR
+  ? path.resolve(process.env.PET_DATA_DIR)
+  : path.join(ROOT, 'data');
 export const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 export const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 export const CONFIG_FILE = path.join(DATA_DIR, 'config.json');

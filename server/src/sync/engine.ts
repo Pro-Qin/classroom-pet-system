@@ -27,6 +27,9 @@ const META_COLS = new Set(['updated_at']);
 /** 各表允许的列名（PRAGMA 缓存，防云端可控列名注入） */
 const tableColsCache = new Map<string, Set<string>>();
 
+/** 各表主键列（默认 id；app_settings 用 key） */
+const TABLE_PK: Record<string, string> = { app_settings: 'key' };
+
 function allowedCols(db: ReturnType<typeof getDb>, table: string): Set<string> {
   let set = tableColsCache.get(table);
   if (!set) {
@@ -72,19 +75,20 @@ export function applyRow(db: ReturnType<typeof getDb>, table: string, row: Recor
   if (unknownCols.length > 0) {
     console.warn(`[sync] ${table} 行含未知列，已跳过：${unknownCols.join(',')}`);
   }
+  const pk = TABLE_PK[table] ?? 'id';
   const cols = Object.keys(row).filter((c) => allowed.has(c));
-  if (!cols.includes('id')) throw new Error(`行缺少 id 或列不在白名单: ${table}`);
-  // 行只有 id 没有可更新列（如未知列全被跳过）：直接跳过，避免生成非法 SQL
+  if (!cols.includes(pk)) throw new Error(`行缺少主键 ${pk} 或列不在白名单: ${table}`);
+  // 行只有主键没有可更新列（如未知列全被跳过）：直接跳过，避免生成非法 SQL
   if (cols.length === 1) return;
   const colSql = cols.join(',');
   const ph = cols.map(() => '?').join(',');
   const upsert = cols
-    .map((c) => (c === 'id' ? '' : `${c}=excluded.${c}`))
+    .map((c) => (c === pk ? '' : `${c}=excluded.${c}`))
     .filter(Boolean)
     .join(',');
   const stmt = db.prepare(
     `INSERT INTO ${table} (${colSql}) VALUES (${ph})
-     ON CONFLICT(id) DO UPDATE SET ${upsert}`
+     ON CONFLICT(${pk}) DO UPDATE SET ${upsert}`
   );
   stmt.run(...(cols.map((c) => row[c]) as unknown[] as Parameters<typeof stmt.run>));
 }
@@ -136,9 +140,10 @@ export async function runSync(
   // ---- PULL（检测冲突，无冲突行直接应用）----
   for (const table of SYNC_TABLES) {
     const cloudRows = await transport.pull(table, lastSync);
+    const pk = TABLE_PK[table] ?? 'id';
     for (const cRow of cloudRows) {
-      const id = cRow.id as string;
-      const localRow = db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id) as
+      const id = cRow[pk] as string;
+      const localRow = db.prepare(`SELECT * FROM ${table} WHERE ${pk} = ?`).get(id) as
         | Record<string, unknown>
         | undefined;
       const localChanged = !!localRow && (localRow.updated_at as string) > lastSync;

@@ -10,6 +10,12 @@ import { getDb, nowIso, type SqliteDb } from './connection.js';
  *   - 积分流水（point_events）不可变，追加式
  */
 export const SCHEMA_SQL: string[] = [
+  `CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+
   `CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
@@ -190,6 +196,7 @@ export const SCHEMA_SQL: string[] = [
  *  注意顺序：被引用表在前（students → species → pets），
  *  backpacks / item_use_logs 追加在末尾。 */
 export const SYNC_TABLES = [
+  'app_settings',
   'students',
   'species',
   'pets',

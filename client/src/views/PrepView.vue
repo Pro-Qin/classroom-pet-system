@@ -124,7 +124,16 @@
       </div>
 
       <!-- 底部 -->
-      <div class="mt-8 text-center">
+      <div class="mt-8 text-center flex items-center justify-center gap-3 flex-wrap">
+        <button
+          v-if="syncFailed"
+          class="btn btn-gold px-6"
+          :class="retryLeft > 0 ? 'opacity-60 cursor-not-allowed' : ''"
+          :disabled="retrying || retryLeft > 0"
+          @click="retrySync"
+        >
+          <Loader2 v-if="retrying" class="w-4 h-4 animate-spin" /> {{ retryLeft > 0 ? `重试同步 (${retryLeft}s)` : '重试同步' }}
+        </button>
         <button class="btn btn-primary px-8" :disabled="!ready" @click="goLogin">
           {{ pick('welcome', { formal: '进入登录', playful: '进登录啦～(๑>◡<๑)' }) }} <LogIn class="w-4 h-4" />
         </button>
@@ -135,7 +144,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { Loader2, CheckCircle2, AlertTriangle, Circle, LogIn, WifiOff, Cloud, Download, ArrowDownToLine, ExternalLink } from 'lucide-vue-next';
 import { api } from '../api';
@@ -319,11 +328,67 @@ async function runPrep(): Promise<void> {
     setState('sync', 'done', `拉取 ${syncRes.pulled} 条，推送 ${syncRes.pushed} 条，已备份本地快照`);
     finish();
   } else {
+    syncFailed.value = true;
+    const retry = /频繁|稍后/.test(lastSyncError)
+      ? (syncThrottleSec.value || 8)
+      : 0;
+    retryLeft.value = retry;
     setState('sync', 'error', `同步未完成：${lastSyncError}`);
-    error.value = `同步未完成（${lastSyncError}），可先进入系统，稍后在管理端重试`;
+    error.value = retry > 0
+      ? `同步被节流，${retry}s 后可点「重试同步」重试`
+      : `同步未完成（${lastSyncError}），可先进入系统，稍后在管理端重试`;
     finish();
   }
 }
+
+/** 同步失败后的手动重试（带节流倒计时；仅重跑同步步骤，不整页重来） */
+const syncFailed = ref(false);
+const retryLeft = ref(0);
+const retrying = ref(false);
+const syncThrottleSec = ref(0);
+let retryTimer: ReturnType<typeof setInterval> | null = null;
+function startRetryCountdown(sec: number): void {
+  retryLeft.value = Math.max(1, Math.min(120, sec));
+  if (retryTimer) clearInterval(retryTimer);
+  retryTimer = setInterval(() => {
+    retryLeft.value -= 1;
+    if (retryLeft.value <= 0 && retryTimer) {
+      clearInterval(retryTimer);
+      retryTimer = null;
+    }
+  }, 1000);
+}
+async function retrySync(): Promise<void> {
+  if (retrying.value || retryLeft.value > 0) return;
+  retrying.value = true;
+  error.value = '';
+  try {
+    const r = await api<SyncResult & { retryAfterSec?: number }>('/sync/run', { method: 'POST' });
+    if (r.conflicts.length > 0) {
+      conflicts.value = r.conflicts;
+      deadlineAt.value = r.resolveDeadline ?? 0;
+      for (const c of r.conflicts) {
+        if (choices[`${c.table}:${c.id}`] === undefined) choices[`${c.table}:${c.id}`] = 'local';
+      }
+      setState('sync', 'error', `发现 ${r.conflicts.length} 处冲突，等待裁决`);
+      return;
+    }
+    syncFailed.value = false;
+    setState('sync', 'done', `拉取 ${r.pulled} 条，推送 ${r.pushed} 条，已备份本地快照`);
+  } catch (e) {
+    const err = e as Error & { retryAfterSec?: number };
+    syncThrottleSec.value = err.retryAfterSec ?? 8;
+    error.value = err.retryAfterSec && err.retryAfterSec > 0
+      ? `同步被节流，${err.retryAfterSec}s 后可再次重试`
+      : err.message;
+    startRetryCountdown(err.retryAfterSec ?? 8);
+  } finally {
+    retrying.value = false;
+  }
+}
+onUnmounted(() => {
+  if (retryTimer) clearInterval(retryTimer);
+});
 
 async function resolveConflicts(): Promise<void> {
   resolving.value = true;

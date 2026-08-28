@@ -17,7 +17,7 @@
   <div class="bg-orb w-72 h-72 left-[-6rem] top-[-4rem] bg-indigo-600/30" />
   <div class="bg-orb w-80 h-80 right-[-8rem] top-[30%] bg-fuchsia-600/25" style="animation-delay:-6s" />
   <div class="bg-orb w-64 h-64 left-[20%] bottom-[-6rem] bg-cyan-500/20" style="animation-delay:-11s" />
-  <div class="watermark">Made by Qin_zzq · v.0.4.18</div>
+  <div class="watermark">Made by Qin_zzq · v.0.4.19</div>
 
   <!-- 连接状态常驻提醒 -->
   <div
@@ -131,6 +131,12 @@ async function refreshSync(): Promise<void> {
   try {
     const b = await api<{ syncMode: string }>('/meta/bootstrap');
     if (b.syncMode !== 'supabase') return;
+    // 客户端节流：页面每次加载不再都打 /sync/run（服务端 6s/8s 节流会 429）。
+    // 后台调度器已有 10 分钟自动拉取，这里只作为"刚打开页面"的一次性补拉。
+    const LAST_KEY = 'pet_last_auto_sync_run';
+    const last = Number(localStorage.getItem(LAST_KEY) ?? '0');
+    if (Date.now() - last < 120_000) return;
+    localStorage.setItem(LAST_KEY, String(Date.now()));
     const r = await api<{ conflicts: unknown[] }>('/sync/run', { method: 'POST' });
     if (r.conflicts.length > 0) {
       toast('检测到 ' + r.conflicts.length + ' 处数据冲突，请在准备界面处理', 'error');

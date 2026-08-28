@@ -2,8 +2,16 @@
   <div class="glass p-5">
     <div class="flex items-center justify-between mb-3">
       <h3 class="font-bold text-indigo-50 flex items-center gap-2"><HeartPulse class="w-5 h-5" :class="modeText === '已连接云端' && !h.lastError ? 'text-emerald-300' : 'text-amber-300'" /> 同步健康</h3>
-      <button class="btn btn-ghost !py-1.5 text-xs shrink-0" :disabled="busy" @click="runNow">
-        <Loader2 v-if="busy" class="w-4 h-4 animate-spin" /> <RefreshCw v-else class="w-3.5 h-3.5" /> 立即同步
+      <button
+        class="btn btn-ghost !py-1.5 text-xs shrink-0"
+        :class="retryLeft > 0 ? 'opacity-60 cursor-not-allowed' : ''"
+        :disabled="busy || retryLeft > 0"
+        :title="retryLeft > 0 ? `被节流，${retryLeft}s 后可重试` : ''"
+        @click="runNow"
+      >
+        <Loader2 v-if="busy" class="w-4 h-4 animate-spin" />
+        <RefreshCw v-else class="w-3.5 h-3.5" />
+        {{ retryLeft > 0 ? `重试同步 (${retryLeft}s)` : (lastRunFailed ? '重试同步' : '立即同步') }}
       </button>
     </div>
 
@@ -49,7 +57,7 @@
 /** 同步健康小面板：轮询 /sync/health 汇总展示；冲突倒计时按服务端 deadline 秒级刷新。 */
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { HeartPulse, Loader2, RefreshCw, Timer } from 'lucide-vue-next';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 
 interface HealthData {
   mode: string;
@@ -69,6 +77,22 @@ const h = reactive<Partial<HealthData>>({});
 const busy = ref(false);
 const msg = ref('');
 const msgType = ref<'ok' | 'err'>('ok');
+const retryLeft = ref(0);
+const lastRunFailed = ref(false);
+let retryTimer: ReturnType<typeof setInterval> | null = null;
+
+function startRetryCountdown(sec: number): void {
+  retryLeft.value = Math.max(1, Math.min(120, sec));
+  lastRunFailed.value = true;
+  if (retryTimer) clearInterval(retryTimer);
+  retryTimer = setInterval(() => {
+    retryLeft.value -= 1;
+    if (retryLeft.value <= 0 && retryTimer) {
+      clearInterval(retryTimer);
+      retryTimer = null;
+    }
+  }, 1000);
+}
 const now = ref(Date.now());
 let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -99,10 +123,12 @@ function fmtTime(s: string): string {
   return new Date(s).toLocaleString('zh-CN', { hour12: false });
 }
 async function runNow(): Promise<void> {
+  if (busy.value || retryLeft.value > 0) return;
   busy.value = true;
   msg.value = '';
   try {
-    const r = await api<{ conflicts: unknown[]; pulled: number; pushed: number; completed: boolean }>('/sync/run', { method: 'POST' });
+    const r = await api<{ conflicts: unknown[]; pulled: number; pushed: number; completed: boolean; retryAfterSec?: number }>('/sync/run', { method: 'POST' });
+    lastRunFailed.value = false;
     if (!r.completed && r.conflicts.length > 0) {
       msg.value = `发现 ${r.conflicts.length} 条冲突，请在下方倒计时结束前裁决`;
       msgType.value = 'err';
@@ -112,7 +138,10 @@ async function runNow(): Promise<void> {
     }
     await load();
   } catch (e) {
-    msg.value = (e as Error).message;
+    const err = e as Error & { retryAfterSec?: number };
+    msg.value = err.message || '同步失败';
+    // 429 时服务端带 retryAfterSec：按钮进入倒计时，到点变成「重试同步」
+    startRetryCountdown(err.retryAfterSec && err.retryAfterSec > 0 ? err.retryAfterSec : 8);
     msgType.value = 'err';
   } finally {
     busy.value = false;
@@ -128,5 +157,6 @@ onMounted(() => {
 });
 onUnmounted(() => {
   if (timer) clearInterval(timer);
+  if (retryTimer) clearInterval(retryTimer);
 });
 </script>

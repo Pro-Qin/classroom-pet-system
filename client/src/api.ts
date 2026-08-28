@@ -1,6 +1,14 @@
 const BASE = '/api';
 
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  status?: number;
+  retryAfterSec?: number;
+  constructor(message: string, status?: number, retryAfterSec?: number) {
+    super(message);
+    this.status = status;
+    this.retryAfterSec = retryAfterSec;
+  }
+}
 
 let pushPending = false;
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -40,7 +48,8 @@ export async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const res = await fetch(BASE + path, { ...opts, headers });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new ApiError((data as { error?: string }).error || `请求失败 (${res.status})`);
+    const d = data as { error?: string; retryAfterSec?: number };
+    throw new ApiError(d.error || `请求失败 (${res.status})`, res.status, d.retryAfterSec);
   }
   // 数据写操作后自动推送云端变更（去抖合并，不阻塞、不循环）
   if (!path.startsWith('/sync')) {

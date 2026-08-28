@@ -286,6 +286,15 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
     return false;
   }
 
+  /** 距下次可重试的秒数（供 429 响应与前端倒计时重试按钮使用） */
+  function retryAfterSec(ip: string, kind: 'push' | 'run' | 'resolve'): number {
+    const key = `${kind}:${ip}`;
+    const last = Math.max(syncThrottle.get(key) ?? 0, kind === 'run' ? lastGlobalRun : 0);
+    const gap = kind === 'run' ? Math.max(syncGuards.throttleMs, syncGuards.globalRunGapMs) : syncGuards.throttleMs;
+    const left = gap - (Date.now() - last);
+    return left > 0 ? Math.ceil(left / 1000) : 0;
+  }
+
   /** 待裁决冲突有效期与 IP 绑定逻辑见模块级 pendingRef（同 IP、TTL 内方可裁决） */
 
   // 同步状态（准备界面/管理端共用；只读元数据）
@@ -369,7 +378,7 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
   app.post('/api/sync/push', (req, res) => {
     const ip = req.ip ?? 'unknown';
     if (throttle(ip, 'push')) {
-      res.status(429).json({ error: '操作过于频繁，请稍后再试' });
+      res.status(429).json({ error: '操作过于频繁，请稍后再试', retryAfterSec: retryAfterSec(ip, 'push') });
       return;
     }
     (async () => {
@@ -400,7 +409,7 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
   app.post('/api/sync/run', (req, res) => {
     const ip = req.ip ?? 'unknown';
     if (throttle(ip, 'run')) {
-      res.status(429).json({ error: '操作过于频繁，请稍后再试' });
+      res.status(429).json({ error: '操作过于频繁，请稍后再试', retryAfterSec: retryAfterSec(ip, 'run') });
       return;
     }
     (async () => {

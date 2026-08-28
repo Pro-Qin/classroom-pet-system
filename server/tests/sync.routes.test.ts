@@ -236,14 +236,17 @@ describe('/api/sync/run 与节流', () => {
     expect(cloud.students?.some((s) => s.id === 'run_stu' && s.name === '路由学生')).toBe(true);
   });
 
-  it('同一 IP 连续两次 run 在窗口内被限流 429', async () => {
+  it('同一 IP 连续两次 run 在窗口内被限流 429，且响应携带 retryAfterSec', async () => {
     // 用远大于测试耗时的窗口保证确定性（默认 6s 在慢环境下可能被跑穿）
     syncGuards.throttleMs = 60_000;
+    syncGuards.globalRunGapMs = 60_000;
     const r1 = await call('POST', '/api/sync/run');
     expect(r1.status).toBe(200);
     const r2 = await call('POST', '/api/sync/run');
     expect(r2.status).toBe(429);
     expect(String(r2.json.error)).toContain('频繁');
+    expect(Number(r2.json.retryAfterSec)).toBeGreaterThanOrEqual(1);
+    expect(Number(r2.json.retryAfterSec)).toBeLessThanOrEqual(60);
   });
 
   it('回归锁：run 之后立即 push 不再被误伤 429（按操作类型分桶）', async () => {

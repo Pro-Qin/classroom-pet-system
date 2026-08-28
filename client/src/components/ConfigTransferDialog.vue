@@ -123,10 +123,18 @@ function toggle(key: string): void {
 
 const labelOf = (key: string): string => catalog.value.find((c) => c.key === key)?.label ?? key;
 
-/** 默认勾选策略：全部类别，除 cloud（云端密钥类敏感，须显式选择） */
+/**
+ * 默认勾选策略：全部类别，除 cloud（云端密钥类敏感，须显式选择）。
+ * 例外：当 cloud 是文件/目录中唯一的类别时默认勾上（纯云端连接迁移包是常见场景）。
+ */
 function defaultPick(keys?: string[]): void {
   const base = keys ?? catalog.value.map((c) => c.key);
-  picked.value = new Set(base.filter((k) => k !== 'cloud'));
+  const withoutCloud = base.filter((k) => k !== 'cloud');
+  if (withoutCloud.length === 0 && base.includes('cloud')) {
+    picked.value = new Set(['cloud']);
+    return;
+  }
+  picked.value = new Set(withoutCloud);
 }
 async function ensureCatalog(): Promise<void> {
   if (catalog.value.length > 0) return;

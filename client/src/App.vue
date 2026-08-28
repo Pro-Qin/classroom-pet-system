@@ -17,7 +17,7 @@
   <div class="bg-orb w-72 h-72 left-[-6rem] top-[-4rem] bg-indigo-600/30" />
   <div class="bg-orb w-80 h-80 right-[-8rem] top-[30%] bg-fuchsia-600/25" style="animation-delay:-6s" />
   <div class="bg-orb w-64 h-64 left-[20%] bottom-[-6rem] bg-cyan-500/20" style="animation-delay:-11s" />
-  <div class="watermark">Made by Qin_zzq · v.0.4.19</div>
+  <div class="watermark">Made by Qin_zzq · v.0.4.20</div>
 
   <!-- 连接状态常驻提醒 -->
   <div

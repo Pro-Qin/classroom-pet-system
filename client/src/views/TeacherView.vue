@@ -179,6 +179,10 @@
                 :style="{ background: `linear-gradient(135deg, ${s.speciesColorFrom}, ${s.speciesColorTo})` }"
               >
                 <template v-if="s.petAvatar && !avatarFailed.has(s.id)"><img :src="s.petAvatar" class="w-full h-full object-cover" alt="" @error="avatarFailed.add(s.id)" /></template>
+                <span v-else-if="s.petAvatar" class="flex flex-col items-center justify-center leading-none">
+                  <ImageOff class="w-4 h-4 text-indigo-200/50" />
+                  <span class="text-[7px] mt-0.5 text-indigo-200/50 truncate">{{ s.petName || '宠物' }}</span>
+                </span>
                 <template v-else>{{ s.petEmoji || s.name.slice(0, 1) }}</template>
               </span>
               <div class="min-w-0">
@@ -327,6 +331,10 @@
             >
               <span class="text-4xl absolute -top-8" :class="p.rank === 1 ? 'animate-bounce-soft' : ''">
                 <template v-if="p.petAvatar && !avatarFailed.has(p.id)"><img :src="p.petAvatar" class="w-14 h-14 rounded-full object-cover ring-4" :class="p.rank === 1 ? 'ring-amber-400' : p.rank === 2 ? 'ring-slate-300' : 'ring-orange-400'" alt="" @error="avatarFailed.add(p.id)" /></template>
+                <span v-else-if="p.petAvatar" class="flex flex-col items-center justify-center leading-none">
+                  <ImageOff class="w-5 h-5 text-indigo-200/50" />
+                  <span class="text-[9px] mt-0.5 text-indigo-200/50 truncate">{{ p.petName || '宠物' }}</span>
+                </span>
                 <template v-else>{{ p.petEmoji }}</template>
               </span>
             </div>
@@ -342,6 +350,10 @@
             <div v-for="p in floatingLeft" :key="p.id" class="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
               <span class="w-7 h-7 rounded-lg bg-white/8 grid place-items-center text-xs font-bold text-indigo-200/70">{{ p.rank }}</span>
               <template v-if="p.petAvatar && !avatarFailed.has(p.id)"><img :src="p.petAvatar" class="w-7 h-7 rounded-full object-cover" alt="" @error="avatarFailed.add(p.id)" /></template>
+              <span v-else-if="p.petAvatar" class="flex flex-col items-center justify-center leading-none">
+                <ImageOff class="w-3.5 h-3.5 text-indigo-200/50" />
+                <span class="text-[7px] mt-0.5 text-indigo-200/50 truncate">{{ p.petName || '宠物' }}</span>
+              </span>
               <span v-else class="text-xl">{{ p.petEmoji }}</span>
               <span class="font-medium text-indigo-50 truncate">{{ p.name }}</span>
               <span class="ml-auto font-bold text-amber-300 shrink-0">{{ fmtInt(p.points) }}</span>
@@ -352,6 +364,10 @@
             <div v-for="p in floatingRight" :key="p.id" class="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
               <span class="w-7 h-7 rounded-lg bg-white/8 grid place-items-center text-xs font-bold text-indigo-200/70">{{ p.rank }}</span>
               <template v-if="p.petAvatar && !avatarFailed.has(p.id)"><img :src="p.petAvatar" class="w-7 h-7 rounded-full object-cover" alt="" @error="avatarFailed.add(p.id)" /></template>
+              <span v-else-if="p.petAvatar" class="flex flex-col items-center justify-center leading-none">
+                <ImageOff class="w-3.5 h-3.5 text-indigo-200/50" />
+                <span class="text-[7px] mt-0.5 text-indigo-200/50 truncate">{{ p.petName || '宠物' }}</span>
+              </span>
               <span v-else class="text-xl">{{ p.petEmoji }}</span>
               <span class="font-medium text-indigo-50 truncate">{{ p.name }}<span v-if="p.petStageLabel" class="ml-1 text-fuchsia-300/70 text-[10px]">Lv.{{ (p.petStage ?? 0) + 1 }}</span></span>
               <span class="ml-auto font-bold text-amber-300 shrink-0">{{ fmtInt(p.points) }}</span>
@@ -379,6 +395,10 @@
                 <td class="px-5 py-3 text-indigo-200/70 flex items-center gap-2">
                 <template v-if="r.petName">
                   <template v-if="r.petAvatar && !avatarFailed.has(r.id)"><img :src="r.petAvatar" class="w-7 h-7 rounded-full object-cover shrink-0" alt="" @error="avatarFailed.add(r.id)" /></template>
+                  <span v-else-if="r.petAvatar" class="flex flex-col items-center justify-center leading-none">
+                    <ImageOff class="w-3.5 h-3.5 text-indigo-200/50" />
+                    <span class="text-[7px] mt-0.5 text-indigo-200/50 truncate">{{ r.petName || '宠物' }}</span>
+                  </span>
                   <span v-else>{{ r.petEmoji }}</span>
                   <span>{{ r.petName }}</span><span v-if="r.petStageLabel" class="ml-1 text-fuchsia-300/80 text-xs">Lv.{{ (r.petStage ?? 0) + 1 }} {{ r.petStageLabel }}</span>
                 </template>
@@ -484,7 +504,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { useRouter } from 'vue-router';
 import {
   GraduationCap, MonitorPlay, LogOut, Users, Coins, TrendingUp, PawPrint,
-  Plus, Zap, Send, History, Check, X, Store, Smile, Gauge, Download, Settings2, KeyRound, Save, RefreshCw, Gift, FileSpreadsheet, type LucideIcon,
+  Plus, Zap, Send, History, Check, X, Store, Smile, Gauge, Download, Settings2, KeyRound, Save, RefreshCw, Gift, FileSpreadsheet, ImageOff, type LucideIcon,
 } from 'lucide-vue-next';
 import ItemsManager from '../components/ItemsManager.vue';
 import RulesManager from '../components/RulesManager.vue';

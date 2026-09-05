@@ -21,6 +21,10 @@
               :style="{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }"
             >
               <template v-if="pet?.avatarPath && !petAvatarFailed.has(pet.id)"><img :src="pet.avatarPath" class="pet-avatar-glitch w-full h-full rounded-full object-cover" alt="宠物头像" @error="petAvatarFailed.add(pet.id)" /></template>
+              <div v-else-if="pet?.avatarPath" class="flex flex-col items-center justify-center leading-none">
+                <ImageOff class="w-5 h-5 text-indigo-200/50" />
+                <span class="text-[9px] mt-0.5 text-indigo-200/50 truncate">{{ pet.name }}</span>
+              </div>
               <template v-else>{{ pet?.species?.emoji ?? detail.student.name.slice(0, 1) }}</template>
             </div>
             <div class="min-w-0">
@@ -91,6 +95,10 @@
                   alt="宠物头像"
                   @error="petAvatarFailed.add(pet.id)"
                 />
+                <div v-else-if="pet.avatarPath" class="flex flex-col items-center justify-center gap-1 leading-none">
+                  <ImageOff class="w-12 h-12 text-indigo-200/50" />
+                  <span class="text-sm text-indigo-200/60">{{ pet.name }}</span>
+                </div>
                 <span v-else class="text-6xl drop-shadow-lg">{{ pet.species?.emoji }}</span>
                 <button
                   class="absolute bottom-1 right-1 w-11 h-11 rounded-full bg-emerald-500/30 border border-emerald-300/50 grid place-items-center shadow-glow hover:scale-110 transition-transform z-10"
@@ -383,7 +391,7 @@ import {
   ChevronLeft, Star, PawPrint, Edit3, ImagePlus, Store, Coins, Backpack, History, Trophy, X, Check,
   Apple, Cake, Milk, Fish, Sparkles, ShowerHead, Volleyball, CircleDot, Cross, FlaskConical,
   BookOpen, Smile, Moon, MoonStar, Flame, BatteryLow, CloudRain, Utensils, Shirt, Zap, SmilePlus,
-  Thermometer, Download, Loader2, type LucideIcon,
+  Thermometer, Download, Loader2, ImageOff, type LucideIcon,
 } from 'lucide-vue-next';
 import { api, upload } from '../api';
 import { toast } from '../composables/toast';

@@ -97,6 +97,10 @@
                 :style="{ background: 'linear-gradient(135deg, ' + s.speciesColorFrom + ', ' + s.speciesColorTo + ')' }"
               >
                 <template v-if="s.petAvatar && !avatarFailed.has(s.id)"><img :src="s.petAvatar" class="pet-avatar-glitch w-full h-full rounded-full object-cover" alt="" @error="avatarFailed.add(s.id)" /></template>
+                <div v-else-if="s.petAvatar" class="flex flex-col items-center justify-center leading-none">
+                  <ImageOff class="w-4 h-4 text-indigo-200/50" />
+                  <span class="text-[7px] mt-0.5 text-indigo-200/50 truncate">{{ s.petName || '宠物' }}</span>
+                </div>
                 <template v-else>{{ s.petEmoji || s.name.slice(0, 1) }}</template>
               </div>
               <div class="min-w-0">
@@ -139,7 +143,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { fmtInt, pinyinFirstLetter } from '../utils/format';
-import { PawPrint, Users, GraduationCap, ShieldCheck, ChevronRight, ChevronDown, Star, Loader2, ArrowUpDown } from 'lucide-vue-next';
+import { PawPrint, Users, GraduationCap, ShieldCheck, ChevronRight, ChevronDown, Star, Loader2, ArrowUpDown, ImageOff } from 'lucide-vue-next';
 import { api, setAuth, clearAuth } from '../api';
 import { useSettings } from '../composables/settings';
 
@@ -148,6 +152,7 @@ interface StudentCard {
   name: string;
   points: number;
   petEmoji: string;
+  petName: string | null;
   petAvatar: string | null;
   speciesColorFrom: string;
   speciesColorTo: string;

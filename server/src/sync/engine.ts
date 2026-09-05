@@ -123,6 +123,38 @@ export async function pushDirty(
  *  4. 若无冲突 → 推进 last_sync_at，完成
  *  有冲突 → 返回 conflicts 等待用户裁决，游标不推进（绝不丢数据）
  */
+/**
+ * 清除本地“演示种子”数据：首次绑定云端后，不能把示范学生/宠物混在真实名单里，
+ * 更不能把示范行当脏行回推云端。只删除明确的 demo 占位行，不影响真实数据。
+ */
+function clearDemoSeed(db: ReturnType<typeof getDb>): void {
+  const demoStudentIds = db
+    .prepare(
+      `SELECT id FROM students WHERE id LIKE 's_demo%' OR (deleted_at IS NULL AND class_name='高一(1)班' AND name IN ('林小满','周子昂','陈思远','王一诺','赵可欣','刘俊杰'))`
+    )
+    .all() as { id: string }[];
+  const ids = demoStudentIds.map((r) => r.id);
+  if (ids.length === 0) return;
+  const ph = ids.map(() => '?').join(',');
+  db.exec('BEGIN');
+  try {
+    db.prepare(`DELETE FROM point_events WHERE student_id IN (${ph})`).run(...ids);
+    db.prepare(`DELETE FROM backpacks WHERE student_id IN (${ph})`).run(...ids);
+    db.prepare(`DELETE FROM item_use_logs WHERE student_id IN (${ph})`).run(...ids);
+    db.prepare(`DELETE FROM pets WHERE student_id IN (${ph}) OR id LIKE 'p_demo%'`).run(...ids);
+    db.prepare(`DELETE FROM students WHERE id IN (${ph})`).run(...ids);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  console.log('[sync] 已清除本地示范种子数据（' + ids.length + ' 名学生及其宠物/流水）');
+}
+
+function hasDemoSeed(db: ReturnType<typeof getDb>): boolean {
+  return !!db.prepare(`SELECT id FROM students WHERE id LIKE 's_demo%' LIMIT 1`).get();
+}
+
 export async function runSync(
   transport: SyncTransport,
   opts?: { snapshot?: boolean }
@@ -132,6 +164,8 @@ export async function runSync(
   // （VACUUM INTO 是同步阻塞操作，高频自动路径上会造成秒级事件循环卡顿）
   const backupFile = opts?.snapshot === false ? null : snapshotDb();
   const lastSync = getLastSync();
+  // 若本地仍是演示种子且使用云端：强制全量拉取（演示数据将被清除并替换为云端权威数据）
+  const forceFull = transport.name === 'supabase' && hasDemoSeed(db);
   let pulled = 0;
   const conflicts: ConflictItem[] = [];
   /** 本轮 PULL 已应用的行（按表）：PUSH 时跳过，防止"拉回即回推"的回声与盲写覆盖 */
@@ -139,7 +173,7 @@ export async function runSync(
 
   // ---- PULL（检测冲突，无冲突行直接应用）----
   for (const table of SYNC_TABLES) {
-    const cloudRows = await transport.pull(table, lastSync);
+    const cloudRows = await transport.pull(table, forceFull ? '' : lastSync);
     const pk = TABLE_PK[table] ?? 'id';
     for (const cRow of cloudRows) {
       const id = cRow[pk] as string;
@@ -166,6 +200,11 @@ export async function runSync(
       skipIds.get(table)!.add(id);
       pulled++;
     }
+  }
+
+  // 首次绑定云端后：清除本地演示种子，让云端数据成为唯一权威（且示范行不会回推云端）
+  if (transport.name === 'supabase') {
+    clearDemoSeed(db);
   }
 
   // ---- PUSH ----

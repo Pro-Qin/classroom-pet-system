@@ -617,13 +617,14 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
         teacherPasswordSet: !!(getSetting('teacher_password') ?? '').match(/^\$2[aby]\$/) || (getSetting('teacher_password') ?? '') !== TEACHER_PASSWORD,
         activeSubject: getSetting('active_subject') ?? '',
         anomalyEffect: getSetting('anomaly_effect') === '1',
+        highQuality: getSetting('high_quality') === '1',
         subjects: (() => { try { return JSON.parse(getSetting('subjects_config') ?? '[]'); } catch { return []; } })(),
     });
   });
   app.put('/api/admin/settings', auth, adminOnly, (req, res) => {
-      const { pointsUnit, adminName, backupMaxBytes, emergencyPwEnabled, termName, teacherPassword, activeSubject, subjects, cloudBackupRetention, heartbeatTimeoutSec, anomalyEffect } = (req.body ?? {}) as {
+      const { pointsUnit, adminName, backupMaxBytes, emergencyPwEnabled, termName, teacherPassword, activeSubject, subjects, cloudBackupRetention, heartbeatTimeoutSec, anomalyEffect, highQuality } = (req.body ?? {}) as {
       pointsUnit?: string; adminName?: string; backupMaxBytes?: number; giteeEnabled?: boolean; giteeRepo?: string;
-      emergencyPwEnabled?: boolean; termName?: string; anomalyEffect?: boolean;
+      emergencyPwEnabled?: boolean; termName?: string; anomalyEffect?: boolean; highQuality?: boolean;
       teacherPassword?: string; activeSubject?: string; subjects?: unknown; cloudBackupRetention?: number; heartbeatTimeoutSec?: number;
     };
     if (pointsUnit !== undefined) setSetting('points_unit', String(pointsUnit).trim() || '积分');
@@ -655,6 +656,7 @@ export function registerAdminRoutes(app: express.Express, auth: RequestHandler):
       updateConfig({ heartbeatTimeoutSec: s });
     }
     if (anomalyEffect !== undefined) setSetting('anomaly_effect', anomalyEffect ? '1' : '0');
+    if (highQuality !== undefined) setSetting('high_quality', highQuality ? '1' : '0');
     // Gitee 更新源为锁定默认值，不接受修改（防被篡改指向恶意源）
     setSetting('gitee_enabled', '1');
     setSetting('gitee_repo', DEFAULT_GITEE_REPO);

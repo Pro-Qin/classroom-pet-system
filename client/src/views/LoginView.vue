@@ -12,6 +12,29 @@
     </header>
 
     <main class="flex-1 w-full max-w-5xl mx-auto px-6 pb-12">
+      <!-- 右侧固定首字母索引（学生面板时显示，跟随视口滚动） -->
+      <template v-if="tab === 'student'">
+        <div class="fixed right-3 top-1/2 -translate-y-1/2 z-40 bg-white/5 border border-white/10 rounded-xl p-1 flex flex-col gap-0.5 shadow-glow">
+          <button
+            v-for="l in ALPHABET"
+            :key="l"
+            class="w-6 h-6 rounded-md grid place-items-center text-[11px] font-bold transition-colors"
+            :class="lettersPresent.has(l) ? 'bg-indigo-500/25 text-indigo-100 hover:bg-indigo-500/40 cursor-pointer' : 'text-indigo-200/30 cursor-not-allowed'"
+            :disabled="!lettersPresent.has(l)"
+            @click="scrollToLetter(l)"
+          >{{ l }}</button>
+        </div>
+      </template>
+
+      <!-- 一键回到顶部（始终固定主界面右下角） -->
+      <button
+        class="fixed bottom-6 right-6 z-40 w-11 h-11 rounded-full bg-indigo-500/25 border border-indigo-400/40 text-indigo-100 grid place-items-center shadow-glow hover:bg-indigo-500/40 transition-colors"
+        title="回到顶部"
+        @click="scrollToTop"
+      >
+        <ArrowUp class="w-5 h-5" />
+      </button>
+
       <!-- 三个系统入口 -->
       <div class="grid md:grid-cols-3 gap-5 animate-fadeUp">
         <!-- 学生系统 -->
@@ -54,27 +77,6 @@
 
       <!-- 学生面板 -->
       <div v-if="tab === 'student'" class="mt-6 glass p-6 animate-fadeUp">
-        <!-- 右侧固定首字母索引（便于跳转） -->
-        <div class="fixed right-3 top-1/2 -translate-y-1/2 z-40 bg-white/5 border border-white/10 rounded-xl p-1 flex flex-col gap-0.5 shadow-glow">
-          <button
-            v-for="l in ALPHABET"
-            :key="l"
-            class="w-6 h-6 rounded-md grid place-items-center text-[11px] font-bold transition-colors"
-            :class="lettersPresent.has(l) ? 'bg-indigo-500/25 text-indigo-100 hover:bg-indigo-500/40 cursor-pointer' : 'text-indigo-200/30 cursor-not-allowed'"
-            :disabled="!lettersPresent.has(l)"
-            @click="scrollToLetter(l)"
-          >{{ l }}</button>
-        </div>
-
-        <!-- 一键回到顶部 -->
-        <button
-          class="fixed bottom-6 right-6 z-40 w-11 h-11 rounded-full bg-indigo-500/25 border border-indigo-400/40 text-indigo-100 grid place-items-center shadow-glow hover:bg-indigo-500/40 transition-colors"
-          title="回到顶部"
-          @click="scrollToTop"
-        >
-          <ArrowUp class="w-5 h-5" />
-        </button>
-
         <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
           <h3 class="font-bold text-indigo-100 flex items-center gap-2"><Users class="w-5 h-5 text-sky-300" /> 选择学生</h3>
           <div class="flex items-center gap-2">

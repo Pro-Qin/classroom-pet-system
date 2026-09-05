@@ -40,6 +40,12 @@ body {
   border-radius: 1.25rem;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
 }
+/* 关闭“高质量模式”时，去掉毛玻璃（GPU 大头） */
+html:not(.hq-on) .glass,
+html:not(.hq-on) .bottom-bar {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 
 .btn {
   @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-medium transition-all duration-150 ease-out select-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed;
@@ -124,6 +130,10 @@ select option {
 }
 @media (prefers-reduced-motion: reduce) {
   .bg-orb { animation: none; }
+}
+/* 关闭“高质量模式”时隐藏浮动光斑 */
+html:not(.hq-on) .bg-orb {
+  display: none;
 }
 
 /* ---- 底部操作栏（一体机大按钮） ---- */

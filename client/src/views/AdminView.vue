@@ -265,6 +265,10 @@
               <input type="checkbox" v-model="setForm.anomalyEffect" class="accent-indigo-400 mt-0.5" />
               <span class="text-sm text-indigo-100">启用宠物头像异常/差色特效（默认关闭，可节省 GPU 占用）</span>
             </label>
+            <label class="flex items-start gap-2 cursor-pointer">
+              <input type="checkbox" v-model="setForm.highQuality" class="accent-indigo-400 mt-0.5" />
+              <span class="text-sm text-indigo-100">高质量模式（光斑/毛玻璃；默认关闭，开启后更华丽但更吃 GPU）</span>
+            </label>
           </div>
           <div class="glass p-5 space-y-4 self-start">
             <p class="text-[11px] uppercase tracking-wider text-indigo-200/40">Cloud Config</p>
@@ -432,6 +436,7 @@ import { toast } from '../composables/toast';
 import { useSettings } from '../composables/settings';
 import { useFrostHeader } from '../composables/useFrostHeader';
 import { useAnomaly } from '../composables/anomaly';
+import { useHighQuality } from '../composables/quality';
 
 const router = useRouter();
 const { pointsUnit } = useSettings();
@@ -504,7 +509,7 @@ const spForm = reactive({ id: '', name: '', emoji: '', colorFrom: '', colorTo: '
 const speciesAvatarFile = ref<File | null>(null);
 const speciesAvatarPreview = ref('');
 const itemForm = reactive({ id: '', name: '', type: 'food', cost: 10, effectText: '{}', desc: '' });
-const setForm = reactive({ pointsUnit: '积分', adminName: '', giteeRepo: '', giteeEnabled: false, backupMaxMB: 1024, emergencyPwEnabled: true, termName: '默认学期', teacherPassword: '', teacherPasswordSet: false, activeSubject: '默认', cloudBackupRetention: 10, anomalyEffect: false, heartbeatTimeoutSec: 120, autoPullMinutes: 10, subjects: [{ name: '默认', sync: true, enabled: { points: true, pets: true, shop: true, rank: true, avatar: true } }], uiStyle: { welcome: 'global_formal' as string, student: 'formal' as string, admin: 'global_formal' as string } });
+const setForm = reactive({ pointsUnit: '积分', adminName: '', giteeRepo: '', giteeEnabled: false, backupMaxMB: 1024, emergencyPwEnabled: true, termName: '默认学期', teacherPassword: '', teacherPasswordSet: false, activeSubject: '默认', cloudBackupRetention: 10, anomalyEffect: false, highQuality: false, heartbeatTimeoutSec: 120, autoPullMinutes: 10, subjects: [{ name: '默认', sync: true, enabled: { points: true, pets: true, shop: true, rank: true, avatar: true } }], uiStyle: { welcome: 'global_formal' as string, student: 'formal' as string, admin: 'global_formal' as string } });
 const auditLogs = ref<any[]>([]);
 const errorReports = ref<any[]>([]);
 const dataMsg = ref('');
@@ -546,6 +551,7 @@ async function loadAll(): Promise<void> {
   setForm.heartbeatTimeoutSec = (se as { heartbeatTimeoutSec?: number }).heartbeatTimeoutSec || 120;
   setForm.autoPullMinutes = (se as { autoPullMinutes?: number }).autoPullMinutes ?? 10;
   setForm.anomalyEffect = !!(se as { anomalyEffect?: boolean }).anomalyEffect;
+  setForm.highQuality = !!(se as { highQuality?: boolean }).highQuality;
   setForm.teacherPasswordSet = !!(se as { teacherPasswordSet?: boolean }).teacherPasswordSet;
   setForm.teacherPassword = ''; // 哈希存储后不再回显，留空即不修改
   setForm.emergencyPwEnabled = se.emergencyPwEnabled !== false;
@@ -771,6 +777,7 @@ async function saveSettings(): Promise<void> {
   }
   await api('/admin/settings', { method: 'PUT', body: JSON.stringify(setForm) });
   void useAnomaly().refresh();
+  void useHighQuality().refresh();
   toast('设置已保存', 'success');
   await loadAll();
 }

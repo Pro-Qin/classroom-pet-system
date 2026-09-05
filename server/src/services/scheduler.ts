@@ -113,6 +113,18 @@ async function tick(): Promise<void> {
 export function startSchedulers(): void {
   if (started || process.env.VITEST) return;
   started = true;
+  // 每次程序启动：立即为全体宠物按 `last_tick_at` 补一次经验（后台执行，浮标防重复）。
+  // 后续每小时 tick 再继续按最新 last_tick_at 累加，学生无需进入自己的宠物系统。
+  if (process.env.PET_DISABLE_SETTLE !== '1') {
+    try {
+      setSetting('pets_settle_last_at', String(Date.now()));
+      const r = settleAllPets(getDb());
+      if (r.settled > 0) console.log(`[scheduler] 启动全员经验结算：${r.settled} 只，共 +${r.expTotal} 经验`);
+      else console.log('[scheduler] 启动全员经验结算：无新增（浮标未到下一次）');
+    } catch (e) {
+      console.warn('[scheduler] 启动全员经验结算失败:', (e as Error).message);
+    }
+  }
   // 启动后 8 秒做首次检查（等服务就绪），之后每分钟 tick 一次判定到期任务
   setTimeout(() => void tick(), 8_000).unref();
   tickTimer = setInterval(() => void tick(), 60_000);

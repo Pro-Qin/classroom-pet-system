@@ -18,7 +18,7 @@
           <div class="flex items-center gap-4">
             <div
               class="w-16 h-16 rounded-full grid place-items-center text-2xl font-bold shrink-0 shadow-glow overflow-hidden"
-              :style="{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }"
+              :style="petBgStyle"
             >
               <template v-if="pet?.avatarPath && !petAvatarFailed.has(pet.id)"><img :src="pet.avatarPath" class="pet-avatar-glitch w-full h-full rounded-full object-cover" alt="宠物头像" @error="petAvatarFailed.add(pet.id)" /></template>
               <div v-else-if="pet?.avatarPath" class="flex flex-col items-center justify-center leading-none">
@@ -74,7 +74,7 @@
             <div class="relative mt-5 flex flex-col items-center">
               <div
                 class="relative w-40 h-40 rounded-full grid place-items-center animate-float shadow-glow cursor-pointer"
-                :style="{ background: `linear-gradient(135deg, ${pet.species?.colorFrom ?? '#6366f1'}, ${pet.species?.colorTo ?? '#8b5cf6'})` }"
+                :style="petBgStyle"
                 @click="petInteract"
                 title="摸摸它！"
               >
@@ -130,7 +130,7 @@
               <p v-if="petBubble" class="mt-2 text-xs text-fuchsia-200/90 animate-fadeUp">{{ petBubble }}</p>
             </div>
 
-            <div class="mt-5 grid grid-cols-2 gap-3">
+            <div class="mt-5 grid grid-cols-3 gap-3">
               <button class="btn btn-ghost !py-2 text-sm" @click="renameOpen = !renameOpen">
                 <Edit3 class="w-4 h-4" /> 改名
               </button>
@@ -138,6 +138,10 @@
                 <Loader2 v-if="uploadingAvatar" class="w-4 h-4 animate-spin" />
                 <ImagePlus v-else class="w-4 h-4" /> {{ uploadingAvatar ? '上传中…' : '换头像' }}
                 <input type="file" accept="image/*" class="hidden" @change="onAvatarChange" :disabled="uploadingAvatar" />
+              </label>
+              <label class="btn btn-ghost !py-2 text-sm cursor-pointer" :title="avatarBgColor ? '点击可重新选择，长按/再点恢复默认' : '为头像选择背景颜色'">
+                <Palette class="w-4 h-4" /> 背景色
+                <input type="color" class="hidden" :value="avatarBgColor || '#6366f1'" @input="onAvatarBgChange" />
               </label>
             </div>
             <div v-if="renameOpen" class="mt-3 flex gap-2">
@@ -388,7 +392,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-  ChevronLeft, Star, PawPrint, Edit3, ImagePlus, Store, Coins, Backpack, History, Trophy, X, Check,
+  ChevronLeft, Star, PawPrint, Edit3, ImagePlus, Palette, Store, Coins, Backpack, History, Trophy, X, Check,
   Apple, Cake, Milk, Fish, Sparkles, ShowerHead, Volleyball, CircleDot, Cross, FlaskConical,
   BookOpen, Smile, Moon, MoonStar, Flame, BatteryLow, CloudRain, Utensils, Shirt, Zap, SmilePlus,
   Thermometer, Download, Loader2, ImageOff, type LucideIcon,
@@ -448,6 +452,7 @@ const speciesList = ref<{ id: string; name: string; emoji: string; avatar_path: 
 const adoptSpeciesId = ref('');
 const adoptName = ref('');
 const uploadingAvatar = ref(false);
+const avatarBgColor = ref('');
 const backpackOpen = ref(false);
 const confirmItemId = ref('');
 const previewItem = ref<(Detail['backpack'][number]) | null>(null);
@@ -480,6 +485,38 @@ function petInteract(): void {
 
 const pet = computed(() => detail.value?.pet ?? null);
 const petAvatarFailed = reactive(new Set<string>());
+
+/** 头像背景：优先使用学生自定义颜色，否则用种类默认渐变色 */
+const petBgStyle = computed(() => {
+  const c = avatarBgColor.value;
+  if (c) {
+    return { background: 'linear-gradient(135deg, ' + c + ', ' + c + 'aa)' };
+  }
+  const sp = pet.value?.species;
+  return { background: 'linear-gradient(135deg, ' + (sp?.colorFrom ?? '#6366f1') + ', ' + (sp?.colorTo ?? '#8b5cf6') + ')' };
+});
+
+function loadAvatarBg(): void {
+  const pid = pet.value?.id;
+  if (!pid) return;
+  try {
+    avatarBgColor.value = localStorage.getItem('pet_avatar_bg_' + pid) || '';
+  } catch {
+    avatarBgColor.value = '';
+  }
+}
+function onAvatarBgChange(e: Event): void {
+  const v = (e.target as HTMLInputElement).value;
+  const pid = pet.value?.id;
+  if (!v || !pid) return;
+  avatarBgColor.value = v;
+  try {
+    localStorage.setItem('pet_avatar_bg_' + pid, v);
+  } catch {
+    /* ignore */
+  }
+  toast('头像背景已更新', 'success');
+}
 
 /** 宠物心情气泡里的小提示（引导互动） */
 const moodHint = computed(() => {
@@ -660,6 +697,7 @@ async function load(): Promise<void> {
   try {
     detail.value = await api<Detail & { pet?: { eventText?: string | null } }>(`/students/${studentId}`);
     if (!detail.value.pet && speciesList.value.length === 0) await loadSpecies();
+    loadAvatarBg();
     // 宠物今日小事件（低频、确定性）：命中时以 toast 呈现彩蛋
     const ev = (detail.value as { pet?: { eventText?: string | null } }).pet?.eventText;
     if (ev) setTimeout(() => toast(ev, 'success'), 600);

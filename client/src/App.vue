@@ -17,7 +17,7 @@
   <div class="bg-orb w-72 h-72 left-[-6rem] top-[-4rem] bg-indigo-600/30" />
   <div class="bg-orb w-80 h-80 right-[-8rem] top-[30%] bg-fuchsia-600/25" style="animation-delay:-6s" />
   <div class="bg-orb w-64 h-64 left-[20%] bottom-[-6rem] bg-cyan-500/20" style="animation-delay:-11s" />
-  <div class="watermark">Made by Qin_zzq · v.0.4.24</div>
+  <div class="watermark">Made by Qin_zzq · v.0.4.25</div>
 
   <!-- 连接状态常驻提醒 -->
   <div
@@ -51,6 +51,7 @@ import { useRouter } from 'vue-router';
 import { Loader2, Cloud, WifiOff, ServerOff, AlertTriangle } from 'lucide-vue-next';
 import { api } from './api';
 import { toast } from './composables/toast';
+import { useAnomaly } from './composables/anomaly';
 import ToastHost from './components/ToastHost.vue';
 
 interface Bootstrap {
@@ -62,6 +63,8 @@ interface Bootstrap {
 
 const router = useRouter();
 const bootState = ref<'loading' | 'ready'>('loading');
+const anomaly = useAnomaly();
+let anomalyTimer: ReturnType<typeof setInterval> | null = null;
 
 // 连接状态常驻提醒
 const syncPill = reactive({ visible: false, mode: '', text: '', cls: '', title: '', error: '' });
@@ -186,6 +189,8 @@ onMounted(() => {
   refreshSync();
   refreshSyncPill();
   syncTimer = setInterval(refreshSyncPill, 60_000);
+  anomalyTimer = setInterval(() => anomaly.refresh(), 60_000);
+  void anomaly.refresh();
   // 心跳：配合 start.exe 的"浏览器关闭→后端自动结束"。
   // 每 1s 上报；连续 2 次失败即判定服务端停止，弹出全屏遮罩；心跳恢复后自动清除遮罩。
   heartbeatTimer = setInterval(() => {
@@ -204,5 +209,6 @@ onMounted(() => {
 onUnmounted(() => {
   if (syncTimer) clearInterval(syncTimer);
   if (heartbeatTimer) clearInterval(heartbeatTimer);
+  if (anomalyTimer) clearInterval(anomalyTimer);
 });
 </script>

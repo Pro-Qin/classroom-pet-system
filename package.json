@@ -1,6 +1,6 @@
 {
   "name": "pet-campus",
-  "version": "0.4.24",
+  "version": "0.4.25",
   "private": true,
   "workspaces": [
     "server",

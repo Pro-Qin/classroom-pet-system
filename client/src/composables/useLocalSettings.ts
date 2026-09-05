@@ -8,9 +8,10 @@ export interface LocalSettings {
   autoStart: boolean;
   logToFile: boolean;
   logCapMB: number;
+  anomalyEffect: boolean;
 }
 
-const defaults: LocalSettings = { kioskInterval: 10, heartbeatTimeoutSec: 120, autoStart: false, logToFile: true, logCapMB: 1024 };
+const defaults: LocalSettings = { kioskInterval: 10, heartbeatTimeoutSec: 120, autoStart: false, logToFile: true, logCapMB: 1024, anomalyEffect: false };
 
 const state = ref<LocalSettings>({ ...defaults });
 let loaded = false;

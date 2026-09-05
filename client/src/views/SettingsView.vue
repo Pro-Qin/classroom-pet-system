@@ -39,6 +39,11 @@
           <input v-model.number="logCapMB" type="number" class="input !w-32" min="1" max="10240" placeholder="1024" />
         </div>
 
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input type="checkbox" v-model="anomalyEffect" class="accent-indigo-400 mt-0.5" />
+          <span class="text-sm text-indigo-100">启用宠物头像异常/差色特效（默认关闭，开启后本机也会显示）</span>
+        </label>
+
         <button class="btn btn-primary w-full" @click="save">保存本机设置</button>
         <button class="btn btn-ghost w-full" @click="applyOnce">仅本次生效</button>
         <p v-if="msg" class="text-xs text-center" :class="msgErr ? 'text-rose-300' : 'text-emerald-300'">{{ msg }}</p>
@@ -52,6 +57,7 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { SlidersHorizontal, ChevronLeft } from 'lucide-vue-next';
 import { saveLocalSettings, getLocalSettings } from '../composables/useLocalSettings';
+import { useAnomaly } from '../composables/anomaly';
 
 const router = useRouter();
 const kioskInterval = ref(10);
@@ -59,6 +65,7 @@ const heartbeatTimeoutSec = ref(120);
 const autoStart = ref(false);
 const logToFile = ref(true);
 const logCapMB = ref(1024);
+const anomalyEffect = ref(false);
 const msg = ref('');
 const msgErr = ref(false);
 
@@ -68,6 +75,7 @@ heartbeatTimeoutSec.value = s.heartbeatTimeoutSec;
 autoStart.value = s.autoStart;
 logToFile.value = s.logToFile;
 logCapMB.value = s.logCapMB;
+anomalyEffect.value = s.anomalyEffect;
 
 function goBack(): void {
   router.back();
@@ -92,8 +100,10 @@ function save(): void {
     autoStart: autoStart.value,
     logToFile: logToFile.value,
     logCapMB: Math.max(1, Math.min(10240, Math.round(Number(logCapMB.value) || 1024))),
+    anomalyEffect: anomalyEffect.value,
   });
   void applyHeartbeat(hb);
+  void useAnomaly().refresh();
   msg.value = '本机设置已保存并已对本次运行生效';
   msgErr.value = false;
 }

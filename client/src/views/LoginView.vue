@@ -54,6 +54,27 @@
 
       <!-- 学生面板 -->
       <div v-if="tab === 'student'" class="mt-6 glass p-6 animate-fadeUp">
+        <!-- 右侧固定首字母索引（便于跳转） -->
+        <div class="fixed right-3 top-1/2 -translate-y-1/2 z-40 bg-white/5 border border-white/10 rounded-xl p-1 flex flex-col gap-0.5 shadow-glow">
+          <button
+            v-for="l in ALPHABET"
+            :key="l"
+            class="w-6 h-6 rounded-md grid place-items-center text-[11px] font-bold transition-colors"
+            :class="lettersPresent.has(l) ? 'bg-indigo-500/25 text-indigo-100 hover:bg-indigo-500/40 cursor-pointer' : 'text-indigo-200/30 cursor-not-allowed'"
+            :disabled="!lettersPresent.has(l)"
+            @click="scrollToLetter(l)"
+          >{{ l }}</button>
+        </div>
+
+        <!-- 一键回到顶部 -->
+        <button
+          class="fixed bottom-6 right-6 z-40 w-11 h-11 rounded-full bg-indigo-500/25 border border-indigo-400/40 text-indigo-100 grid place-items-center shadow-glow hover:bg-indigo-500/40 transition-colors"
+          title="回到顶部"
+          @click="scrollToTop"
+        >
+          <ArrowUp class="w-5 h-5" />
+        </button>
+
         <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
           <h3 class="font-bold text-indigo-100 flex items-center gap-2"><Users class="w-5 h-5 text-sky-300" /> 选择学生</h3>
           <div class="flex items-center gap-2">
@@ -62,18 +83,6 @@
               <ArrowUpDown class="w-3.5 h-3.5" /> {{ sortDir === 'asc' ? '降序' : '升序' }}
             </button>
           </div>
-        </div>
-
-        <!-- 首字母 A-Z 索引条 -->
-        <div class="flex items-center gap-1 flex-wrap mb-3">
-          <button
-            v-for="l in ALPHABET"
-            :key="l"
-            class="w-7 h-7 rounded-lg grid place-items-center text-xs font-bold transition-colors"
-            :class="lettersPresent.has(l) ? 'bg-indigo-500/25 text-indigo-100 border border-indigo-400/40 hover:bg-indigo-500/40 cursor-pointer' : 'bg-white/5 text-indigo-200/30 border border-white/5 cursor-not-allowed'"
-            :disabled="!lettersPresent.has(l)"
-            @click="scrollToLetter(l)"
-          >{{ l }}</button>
         </div>
 
         <div v-if="studentGroups.length === 0" class="py-10 text-center text-indigo-200/60">
@@ -143,7 +152,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { fmtInt, pinyinFirstLetter } from '../utils/format';
-import { PawPrint, Users, GraduationCap, ShieldCheck, ChevronRight, ChevronDown, Star, Loader2, ArrowUpDown, ImageOff } from 'lucide-vue-next';
+import { PawPrint, Users, GraduationCap, ShieldCheck, ChevronRight, ChevronDown, Star, Loader2, ArrowUpDown, ArrowUp, ImageOff } from 'lucide-vue-next';
 import { api, setAuth, clearAuth } from '../api';
 import { useSettings } from '../composables/settings';
 
@@ -205,6 +214,9 @@ function setLetterRef(letter: string, el: any): void {
 function scrollToLetter(letter: string): void {
   const el = letterRefs[letter];
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function scrollToTop(): void {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 async function loadStudents(): Promise<void> {

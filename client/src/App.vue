@@ -17,16 +17,18 @@
   <div class="bg-orb w-72 h-72 left-[-6rem] top-[-4rem] bg-indigo-600/30" />
   <div class="bg-orb w-80 h-80 right-[-8rem] top-[30%] bg-fuchsia-600/25" style="animation-delay:-6s" />
   <div class="bg-orb w-64 h-64 left-[20%] bottom-[-6rem] bg-cyan-500/20" style="animation-delay:-11s" />
-  <div class="watermark">Made by Qin_zzq · v.0.4.23</div>
+  <div class="watermark">Made by Qin_zzq · v.0.4.24</div>
 
   <!-- 连接状态常驻提醒 -->
   <div
     v-if="syncPill.visible"
-    class="fixed bottom-4 left-4 z-[80] pill !px-3 !py-1.5 pointer-events-none transition-opacity duration-500"
-    :class="syncPill.cls"
+    class="fixed bottom-4 left-4 z-[80] pill !px-3 !py-1.5 transition-opacity duration-500"
+    :class="[syncPill.cls, syncPill.error ? 'cursor-pointer' : 'pointer-events-none']"
     :title="syncPill.title"
+    @click="syncPill.error && copySyncError()"
   >
-    <Cloud v-if="syncPill.mode === 'supabase'" class="w-3.5 h-3.5" />
+    <AlertTriangle v-if="syncPill.error" class="w-3.5 h-3.5" />
+    <Cloud v-else-if="syncPill.mode === 'supabase'" class="w-3.5 h-3.5" />
     <WifiOff v-else class="w-3.5 h-3.5" />
     {{ syncPill.text }}
   </div>
@@ -46,7 +48,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { Loader2, Cloud, WifiOff, ServerOff } from 'lucide-vue-next';
+import { Loader2, Cloud, WifiOff, ServerOff, AlertTriangle } from 'lucide-vue-next';
 import { api } from './api';
 import { toast } from './composables/toast';
 import ToastHost from './components/ToastHost.vue';
@@ -62,7 +64,7 @@ const router = useRouter();
 const bootState = ref<'loading' | 'ready'>('loading');
 
 // 连接状态常驻提醒
-const syncPill = reactive({ visible: false, mode: '', text: '', cls: '', title: '' });
+const syncPill = reactive({ visible: false, mode: '', text: '', cls: '', title: '', error: '' });
 let syncTimer: ReturnType<typeof setInterval> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let hbFail = 0;
@@ -70,7 +72,18 @@ const serverDown = ref(false);
 
 async function refreshSyncPill(): Promise<void> {
   try {
-    const s = await api<{ mode: string; lastSyncAt: string }>('/sync/status');
+    const s = await api<{ mode: string; lastSyncAt: string; lastError?: string }>('/sync/status');
+    syncPill.error = '';
+    // 最近一次同步异常：优先展示，点击可复制错误信息到剪贴板
+    if (s.lastError) {
+      syncPill.mode = 'supabase';
+      syncPill.visible = true;
+      syncPill.error = s.lastError;
+      syncPill.cls = 'bg-rose-500/15 border border-rose-400/30 text-rose-200';
+      syncPill.text = '同步异常';
+      syncPill.title = s.lastError;
+      return;
+    }
     if (s.mode !== 'supabase') {
       syncPill.mode = 'local';
       syncPill.visible = true;
@@ -100,9 +113,27 @@ async function refreshSyncPill(): Promise<void> {
   } catch {
     syncPill.visible = true;
     syncPill.mode = '';
+    syncPill.error = '无法连接服务器';
     syncPill.cls = 'bg-rose-500/15 border border-rose-400/30 text-rose-200';
     syncPill.text = '服务未连接';
     syncPill.title = '无法连接服务器';
+  }
+}
+
+/** 复制同步异常信息到剪贴板 */
+async function copySyncError(): Promise<void> {
+  const text = syncPill.title || syncPill.text;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('同步异常信息已复制到剪贴板', 'success');
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch { /* ignore */ }
+    document.body.removeChild(ta);
+    toast('已复制', 'success');
   }
 }
 

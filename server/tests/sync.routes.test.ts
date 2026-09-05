@@ -160,7 +160,7 @@ describe('/api/sync/status', () => {
     expect(r.status).toBe(200);
     expect(r.json.mode).toBe('mock');
     expect(r.json.configured).toBe(false);
-    expect(Object.keys(r.json).sort()).toEqual(['backupCount', 'configured', 'lastSyncAt', 'mode']);
+    expect(Object.keys(r.json).sort()).toEqual(['backupCount', 'configured', 'lastError', 'lastSyncAt', 'mode']);
   });
 
   it('同步一次后 backupCount 至少为 1，游标时间可见', async () => {

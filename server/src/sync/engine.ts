@@ -171,6 +171,11 @@ export async function runSync(
   /** 本轮 PULL 已应用的行（按表）：PUSH 时跳过，防止"拉回即回推"的回声与盲写覆盖 */
   const skipIds = new Map<string, Set<string>>();
 
+  // 首次绑定云端：先清除本地演示种子（否则 demo 行 student_no 与真实行冲突，导致 UNIQUE 报错 500）
+  if (forceFull) {
+    clearDemoSeed(db);
+  }
+
   // ---- PULL（检测冲突，无冲突行直接应用）----
   for (const table of SYNC_TABLES) {
     const cloudRows = await transport.pull(table, forceFull ? '' : lastSync);
@@ -200,11 +205,6 @@ export async function runSync(
       skipIds.get(table)!.add(id);
       pulled++;
     }
-  }
-
-  // 首次绑定云端后：清除本地演示种子，让云端数据成为唯一权威（且示范行不会回推云端）
-  if (transport.name === 'supabase') {
-    clearDemoSeed(db);
   }
 
   // ---- PUSH ----

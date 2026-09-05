@@ -312,6 +312,7 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
       configured: !!(cfg.supabaseUrl && cfg.supabaseServiceKey),
       lastSyncAt: meta?.last_sync_at ?? '',
       backupCount: listSnapshots(5).length,
+      lastError: getSetting('sync_last_error') || '',
     });
   });
 

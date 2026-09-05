@@ -17,7 +17,7 @@
   <div class="bg-orb w-72 h-72 left-[-6rem] top-[-4rem] bg-indigo-600/30" />
   <div class="bg-orb w-80 h-80 right-[-8rem] top-[30%] bg-fuchsia-600/25" style="animation-delay:-6s" />
   <div class="bg-orb w-64 h-64 left-[20%] bottom-[-6rem] bg-cyan-500/20" style="animation-delay:-11s" />
-  <div class="watermark">Made by Qin_zzq · v.0.4.22</div>
+  <div class="watermark">Made by Qin_zzq · v.0.4.23</div>
 
   <!-- 连接状态常驻提醒 -->
   <div
@@ -112,14 +112,16 @@ async function boot(): Promise<void> {
     const path = router.currentRoute.value.path;
     const prepDone = sessionStorage.getItem('prep_done');
 
-    if (!b.firstRunDone) {
+    // 帮助页（/help/*）永远放行：欢迎向导里点“Supabase 配置教程”会在新标签打开，
+    // 不能因为 firstRunDone=false 被弹回欢迎页。
+    if (path.startsWith('/help/')) {
+      // 帮助页不受门禁限制（欢迎向导可直接跳转查看）
+    } else if (!b.firstRunDone) {
       if (path !== '/welcome') router.replace('/welcome');
     } else if (path === '/welcome') {
       router.replace('/login');
     } else if (path === '/' || path === '/login') {
       if (!prepDone) router.replace('/prep');
-    } else if (path.startsWith('/help/')) {
-      // 帮助页不受 prep 门禁限制（欢迎向导可直接跳转查看）
     }
   } catch {
     // 服务端不可达：停留在当前路由（登录页会展示错误）

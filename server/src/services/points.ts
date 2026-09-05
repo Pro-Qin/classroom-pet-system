@@ -179,15 +179,11 @@ export function getLeaderboard(db: SqliteDb, limit = 50): LeaderboardRow[] {
     species_stage_labels: string | null;
   }[];
 
-  // 并列名次：同分同名次
+  // 名次：按积分降序、姓名升序给出稳定序号（同分亦按序排列，保证榜单/大屏始终完整展示）
   const thresholds = getExpThresholds(db);
   let rank = 0;
-  let prev: number | null = null;
   return rows.map((r, i) => {
-    if (r.points !== prev) {
-      rank = i + 1;
-      prev = r.points;
-    }
+    rank = i + 1;
     const speciesLike = { stage_labels: r.species_stage_labels ?? '[]' } as Parameters<typeof levelLabelOf>[1];
     const stage = stageIndex(r.petExp ?? 0, thresholds);
     return {

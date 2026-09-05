@@ -30,6 +30,10 @@ export const GITHUB_MIRRORS = [
   'https://gh-proxy.com',
   'https://ghproxy.net',
   'https://github.moeyy.xyz',
+  'https://ghproxy.cc',
+  'https://gh.llkk.cc',
+  'https://ghps.top',
+  'https://ghproxy.link',
 ];
 
 /** 多源（按优先级排序）。 */
@@ -107,9 +111,9 @@ export async function inspectSource(src: UpdateSource): Promise<SourceUpdate | n
         assetName: '', assetUrl: '', reachable: false,
       };
     }
-    // 拼接镜像前缀（返回第一个可用的？这里直接返回首个镜像拼接，由客户端兜底多镜像）
-    const mirror = GITHUB_MIRRORS[0];
-    const assetUrl = `${mirror}/${installer.browserDownloadUrl}`;
+    // 返回未加镜像的原始 GitHub 下载地址：下载侧会按 candidateUrls 自动拼接全部镜像，
+    // 并在某个镜像失败时逐个回退，避免“单点镜像不稳就下不动”。
+    const assetUrl = installer.browserDownloadUrl;
     return {
       id: src.id, label: src.label, kind: src.kind, latestVersion: rel.tag,
       assetName: installer.name, assetUrl, reachable: true,

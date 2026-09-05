@@ -17,10 +17,11 @@
         <div class="glass p-6 animate-fadeUp">
           <div class="flex items-center gap-4">
             <div
-              class="w-16 h-16 rounded-2xl grid place-items-center text-2xl font-bold shrink-0 shadow-glow"
-              :style="{ background: `linear-gradient(135deg, #6366f1, #8b5cf6)` }"
+              class="w-16 h-16 rounded-full grid place-items-center text-2xl font-bold shrink-0 shadow-glow overflow-hidden"
+              :style="{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }"
             >
-              {{ pet?.species?.emoji ?? detail.student.name.slice(0, 1) }}
+              <template v-if="pet?.avatarPath && !petAvatarFailed.has(pet.id)"><img :src="pet.avatarPath" class="pet-avatar-glitch w-full h-full rounded-full object-cover" alt="宠物头像" @error="petAvatarFailed.add(pet.id)" /></template>
+              <template v-else>{{ pet?.species?.emoji ?? detail.student.name.slice(0, 1) }}</template>
             </div>
             <div class="min-w-0">
               <p class="text-lg font-bold text-indigo-50 truncate">{{ detail.student.name }}</p>
@@ -86,7 +87,7 @@
                 <img
                   v-if="pet.avatarPath && !petAvatarFailed.has(pet.id)"
                   :src="pet.avatarPath"
-                  class="w-full h-full rounded-full object-cover"
+                  class="pet-avatar-glitch w-full h-full rounded-full object-cover"
                   alt="宠物头像"
                   @error="petAvatarFailed.add(pet.id)"
                 />
@@ -125,9 +126,10 @@
               <button class="btn btn-ghost !py-2 text-sm" @click="renameOpen = !renameOpen">
                 <Edit3 class="w-4 h-4" /> 改名
               </button>
-              <label class="btn btn-ghost !py-2 text-sm cursor-pointer">
-                <ImagePlus class="w-4 h-4" /> 换头像
-                <input type="file" accept="image/*" class="hidden" @change="onAvatarChange" />
+              <label class="btn btn-ghost !py-2 text-sm cursor-pointer" :class="{ 'opacity-60 pointer-events-none': uploadingAvatar }">
+                <Loader2 v-if="uploadingAvatar" class="w-4 h-4 animate-spin" />
+                <ImagePlus v-else class="w-4 h-4" /> {{ uploadingAvatar ? '上传中…' : '换头像' }}
+                <input type="file" accept="image/*" class="hidden" @change="onAvatarChange" :disabled="uploadingAvatar" />
               </label>
             </div>
             <div v-if="renameOpen" class="mt-3 flex gap-2">
@@ -381,7 +383,7 @@ import {
   ChevronLeft, Star, PawPrint, Edit3, ImagePlus, Store, Coins, Backpack, History, Trophy, X, Check,
   Apple, Cake, Milk, Fish, Sparkles, ShowerHead, Volleyball, CircleDot, Cross, FlaskConical,
   BookOpen, Smile, Moon, MoonStar, Flame, BatteryLow, CloudRain, Utensils, Shirt, Zap, SmilePlus,
-  Thermometer, Download, type LucideIcon,
+  Thermometer, Download, Loader2, type LucideIcon,
 } from 'lucide-vue-next';
 import { api, upload } from '../api';
 import { toast } from '../composables/toast';
@@ -437,6 +439,7 @@ const students = ref<{ id: string; points: number }[]>([]);
 const speciesList = ref<{ id: string; name: string; emoji: string; avatar_path: string | null; color_from: string; color_to: string }[]>([]);
 const adoptSpeciesId = ref('');
 const adoptName = ref('');
+const uploadingAvatar = ref(false);
 const backpackOpen = ref(false);
 const confirmItemId = ref('');
 const previewItem = ref<(Detail['backpack'][number]) | null>(null);
@@ -728,15 +731,21 @@ async function doRename(): Promise<void> {
 
 async function onAvatarChange(e: Event): Promise<void> {
   const file = (e.target as HTMLInputElement).files?.[0];
+  (e.target as HTMLInputElement).value = '';
   if (!file) return;
+  uploadingAvatar.value = true;
   try {
     const blob = await cropToCircleBlob(file);
     const f = new File([blob], 'avatar.png', { type: 'image/png' });
-    const r = await upload<{ url: string }>(`/students/${studentId}/pet/avatar`, f);
-    toast('头像已更新', 'success');
+    const r = await upload<{ url: string; cloud?: boolean }>(`/students/${studentId}/pet/avatar`, f);
+    toast('头像已更新' + (r.cloud ? '' : '（已保存到本机）'), 'success');
+    // 清空本地失败缓存，让新头像立即渲染
+    petAvatarFailed.delete(pet.value?.id ?? '');
     await load();
   } catch (err) {
-    toast((err as Error).message, 'error');
+    toast((err as Error).message || '头像上传失败，请重试', 'error');
+  } finally {
+    uploadingAvatar.value = false;
   }
 }
 

@@ -13,6 +13,18 @@ import { loadConfig } from '../config.js';
 
 const AVATAR_BUCKET = 'avatars';
 
+/** 根据扩展名推断图片 MIME（浏览器端 <img> 只有正确 Content-Type 才稳定渲染）。 */
+function mimeOf(filePath: string): string {
+  const m = /(png|jpe?g|gif|webp)$/i.exec(path.extname(filePath).toLowerCase());
+  if (m) {
+    if (m[1] === 'png') return 'image/png';
+    if (m[1] === 'jpg' || m[1] === 'jpeg') return 'image/jpeg';
+    if (m[1] === 'gif') return 'image/gif';
+    if (m[1] === 'webp') return 'image/webp';
+  }
+  return 'application/octet-stream';
+}
+
 function validCloudUrl(url: string): boolean {
   try {
     const u = new URL(url);
@@ -52,12 +64,14 @@ export async function uploadAvatarToCloud(localPath: string): Promise<string | n
   try {
     await ensureBucket(cfg.supabaseUrl, cfg.supabaseAnonKey, cfg.supabaseServiceKey);
     const name = `a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${path.extname(localPath).toLowerCase() || '.png'}`;
+    const mime = mimeOf(localPath);
     const res = await fetch(`${cfg.supabaseUrl}/storage/v1/object/${AVATAR_BUCKET}/${encodeURIComponent(name)}`, {
       method: 'POST',
       headers: {
         apikey: cfg.supabaseAnonKey,
         Authorization: `Bearer ${cfg.supabaseServiceKey}`,
-        'Content-Type': 'application/octet-stream',
+        'Content-Type': mime,
+        'Cache-Control': 'public, max-age=31536000, immutable',
       },
       body: fs.readFileSync(localPath),
     });

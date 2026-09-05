@@ -54,31 +54,57 @@
 
       <!-- 学生面板 -->
       <div v-if="tab === 'student'" class="mt-6 glass p-6 animate-fadeUp">
-        <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
           <h3 class="font-bold text-indigo-100 flex items-center gap-2"><Users class="w-5 h-5 text-sky-300" /> 选择学生</h3>
-          <input v-model="keyword" class="input !w-56" placeholder="搜索姓名…" />
+          <div class="flex items-center gap-2">
+            <input v-model="keyword" class="input !w-44 !py-2 text-sm" placeholder="搜索姓名…" />
+            <button class="btn btn-ghost !py-2 text-xs shrink-0" @click="toggleSortDir">
+              <ArrowUpDown class="w-3.5 h-3.5" /> {{ sortDir === 'asc' ? '降序' : '升序' }}
+            </button>
+          </div>
         </div>
-        <div v-if="students.length === 0" class="py-10 text-center text-indigo-200/60">
+
+        <!-- 首字母 A-Z 索引条 -->
+        <div class="flex items-center gap-1 flex-wrap mb-3">
+          <button
+            v-for="l in ALPHABET"
+            :key="l"
+            class="w-7 h-7 rounded-lg grid place-items-center text-xs font-bold transition-colors"
+            :class="lettersPresent.has(l) ? 'bg-indigo-500/25 text-indigo-100 border border-indigo-400/40 hover:bg-indigo-500/40 cursor-pointer' : 'bg-white/5 text-indigo-200/30 border border-white/5 cursor-not-allowed'"
+            :disabled="!lettersPresent.has(l)"
+            @click="scrollToLetter(l)"
+          >{{ l }}</button>
+        </div>
+
+        <div v-if="studentGroups.length === 0" class="py-10 text-center text-indigo-200/60">
           暂无学生数据
         </div>
         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          <button
-            v-for="s in filtered"
-            :key="s.id"
-            class="glass !rounded-2xl p-4 flex items-center gap-3 text-left hover:border-indigo-400/60 transition-colors"
-            @click="enterStudent(s.id)"
-          >
-            <div
-              class="w-11 h-11 rounded-full grid place-items-center text-xl font-bold shrink-0"
-              :style="{ background: `linear-gradient(135deg, ${s.speciesColorFrom}, ${s.speciesColorTo})` }"
+          <template v-for="g in studentGroups" :key="g.letter">
+            <div :ref="(el) => setLetterRef(g.letter, el)" class="col-span-full flex items-center gap-2 mt-2 first:mt-0">
+              <span class="w-6 h-6 rounded-md bg-sky-500/25 grid place-items-center text-sm font-black text-sky-200">{{ g.letter }}</span>
+              <span class="h-px flex-1 bg-white/10" />
+              <span class="text-[11px] text-indigo-200/50">{{ g.students.length }} 人</span>
+            </div>
+            <button
+              v-for="s in g.students"
+              :key="s.id"
+              class="glass !rounded-2xl p-4 flex items-center gap-3 text-left hover:border-indigo-400/60 transition-colors"
+              @click="enterStudent(s.id)"
             >
-              {{ s.petEmoji || s.name.slice(0, 1) }}
-            </div>
-            <div class="min-w-0">
-              <p class="font-semibold text-indigo-50 truncate">{{ s.name }}</p>
-              <p class="text-xs text-indigo-200/60 truncate"><Star class="w-3 h-3 inline -mt-0.5 text-amber-300" /> {{ fmtInt(s.points) }} {{ pointsUnit }}</p>
-            </div>
-          </button>
+              <div
+                class="w-11 h-11 rounded-full grid place-items-center text-xl font-bold shrink-0 overflow-hidden"
+                :style="{ background: 'linear-gradient(135deg, ' + s.speciesColorFrom + ', ' + s.speciesColorTo + ')' }"
+              >
+                <template v-if="s.petAvatar && !avatarFailed.has(s.id)"><img :src="s.petAvatar" class="pet-avatar-glitch w-full h-full rounded-full object-cover" alt="" @error="avatarFailed.add(s.id)" /></template>
+                <template v-else>{{ s.petEmoji || s.name.slice(0, 1) }}</template>
+              </div>
+              <div class="min-w-0">
+                <p class="font-semibold text-indigo-50 truncate">{{ s.name }}</p>
+                <p class="text-xs text-indigo-200/60 truncate"><Star class="w-3 h-3 inline -mt-0.5 text-amber-300" /> {{ fmtInt(s.points) }} {{ pointsUnit }}</p>
+              </div>
+            </button>
+          </template>
         </div>
       </div>
 
@@ -110,10 +136,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { fmtInt } from '../utils/format';
-import { PawPrint, Users, GraduationCap, ShieldCheck, ChevronRight, ChevronDown, Star, Loader2 } from 'lucide-vue-next';
+import { fmtInt, pinyinFirstLetter } from '../utils/format';
+import { PawPrint, Users, GraduationCap, ShieldCheck, ChevronRight, ChevronDown, Star, Loader2, ArrowUpDown } from 'lucide-vue-next';
 import { api, setAuth, clearAuth } from '../api';
 import { useSettings } from '../composables/settings';
 
@@ -122,6 +148,7 @@ interface StudentCard {
   name: string;
   points: number;
   petEmoji: string;
+  petAvatar: string | null;
   speciesColorFrom: string;
   speciesColorTo: string;
 }
@@ -138,11 +165,42 @@ const password = ref('');
 const loginError = ref('');
 const loggingIn = ref(false);
 
-const filtered = computed(() => {
+const sortDir = ref<'asc' | 'desc'>('asc');
+const avatarFailed = reactive(new Set<string>());
+const letterRefs = reactive<Record<string, HTMLElement | null>>({});
+
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const lettersPresent = computed(() => new Set(studentGroups.value.map((g) => g.letter)));
+
+const studentGroups = computed<{ letter: string; students: StudentCard[] }[]>(() => {
   const k = keyword.value.trim();
-  if (!k) return students.value;
-  return students.value.filter((s) => s.name.includes(k));
+  const filtered = k ? students.value.filter((s) => s.name.includes(k)) : students.value;
+  const map = new Map<string, StudentCard[]>();
+  for (const s of filtered) {
+    const letter = pinyinFirstLetter(s.name);
+    if (!map.has(letter)) map.set(letter, []);
+    map.get(letter)!.push(s);
+  }
+  const groups = [...map.keys()]
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    .map((letter) => ({
+      letter,
+      students: map.get(letter)!.slice().sort((a, b) => a.name.localeCompare(b.name, 'zh')),
+    }));
+  if (sortDir.value === 'desc') groups.reverse();
+  return groups;
 });
+
+function toggleSortDir(): void {
+  sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
+}
+function setLetterRef(letter: string, el: any): void {
+  letterRefs[letter] = el;
+}
+function scrollToLetter(letter: string): void {
+  const el = letterRefs[letter];
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 async function loadStudents(): Promise<void> {
   try {

@@ -210,13 +210,23 @@ select option {
 }
 /* ---- 未领养宠物：白底黑字问号 + 差色特效（周期性出现） ---- */
 @keyframes chromaticGlitch {
-  0%, 88%, 100% { text-shadow: 0 0 transparent; transform: translateX(0); }
-  90% { text-shadow: 3px 0 rgba(255, 0, 90, 0.6), -3px 0 rgba(0, 229, 255, 0.6); transform: translateX(-1px); }
-  93% { text-shadow: -3px 0 rgba(255, 0, 90, 0.5), 3px 0 rgba(0, 229, 255, 0.5); transform: translateX(1px); }
-  96% { text-shadow: 2px 0 rgba(255, 0, 90, 0.55), -2px 0 rgba(0, 229, 255, 0.55); transform: translateX(-1px); }
+  0%, 84%, 100% { text-shadow: 0 0 transparent; transform: translateX(0); }
+  86% { text-shadow: 6px 0 rgba(255, 0, 90, 0.7), -6px 0 rgba(0, 229, 255, 0.7); transform: translateX(-4px); }
+  90% { text-shadow: -6px 0 rgba(255, 0, 90, 0.6), 6px 0 rgba(0, 229, 255, 0.6); transform: translateX(4px); }
+  94% { text-shadow: 4px 0 rgba(255, 0, 90, 0.65), -4px 0 rgba(0, 229, 255, 0.65); transform: translateX(-3px); }
 }
 .no-pet-avatar {
-  animation: chromaticGlitch 5s ease-in-out infinite;
+  animation: chromaticGlitch 2.6s ease-in-out infinite;
+}
+/* ---- 正常宠物头像：同样的差色特效，但频率更低、振幅更小（v0.4.20 复原为旧未领养档位） ---- */
+@keyframes petGlitch {
+  0%, 90%, 100% { transform: translateX(0); filter: none; }
+  92% { transform: translateX(-1px); filter: drop-shadow(2px 0 rgba(255, 0, 90, 0.5)) drop-shadow(-2px 0 rgba(0, 229, 255, 0.5)); }
+  95% { transform: translateX(1px); filter: drop-shadow(-2px 0 rgba(255, 0, 90, 0.5)) drop-shadow(2px 0 rgba(0, 229, 255, 0.5)); }
+  97% { transform: translateX(-1px); filter: drop-shadow(1px 0 rgba(255, 0, 90, 0.45)) drop-shadow(-1px 0 rgba(0, 229, 255, 0.45)); }
+}
+.pet-avatar-glitch {
+  animation: petGlitch 5s ease-in-out infinite;
 }
 
 /* ---- 教师加经验：卡片闪烁反馈 ---- */

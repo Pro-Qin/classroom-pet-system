@@ -208,6 +208,8 @@ function candidateUrls(baseUrl: string): string[] {
     'https://github.moeyy.xyz',
     'https://ghproxy.cc',
     'https://gh.llkk.cc',
+    'https://ghps.top',
+    'https://ghproxy.link',
   ];
   if (/^https:\/\/github\.com\//.test(baseUrl)) {
     // 先镜像（国内快），最后直连 github
@@ -378,7 +380,8 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
   app.post('/api/sync/push', (req, res) => {
     const ip = req.ip ?? 'unknown';
     if (throttle(ip, 'push')) {
-      res.status(429).json({ error: '操作过于频繁，请稍后再试', retryAfterSec: retryAfterSec(ip, 'push') });
+      // 被节流不再报 429：返回已节流标记，前端静默忽略（本地已落盘，稍后由调度器/下次写入补推）
+      res.json({ ok: true, pushed: 0, throttled: true });
       return;
     }
     (async () => {
@@ -409,7 +412,8 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
   app.post('/api/sync/run', (req, res) => {
     const ip = req.ip ?? 'unknown';
     if (throttle(ip, 'run')) {
-      res.status(429).json({ error: '操作过于频繁，请稍后再试', retryAfterSec: retryAfterSec(ip, 'run') });
+      // 被节流不报 429：返回节流标记，避免前端控制台/轮询被刷屏
+      res.json({ ok: true, throttled: true, conflicts: [], pulled: 0, pushed: 0, completed: false });
       return;
     }
     (async () => {
@@ -463,7 +467,7 @@ export function registerSyncRoutes(app: express.Express, _auth: RequestHandler):
   app.post('/api/sync/resolve', (req, res) => {
     const ip = req.ip ?? 'unknown';
     if (throttle(ip, 'resolve')) {
-      res.status(429).json({ error: '操作过于频繁，请稍后再试' });
+      res.json({ ok: true, throttled: true });
       return;
     }
     const { choices } = (req.body ?? {}) as { choices?: Record<string, ConflictChoice> };

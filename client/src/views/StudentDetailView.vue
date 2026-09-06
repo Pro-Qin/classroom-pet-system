@@ -784,9 +784,13 @@ async function onAvatarChange(e: Event): Promise<void> {
     const blob = await cropToCircleBlob(file);
     const f = new File([blob], 'avatar.png', { type: 'image/png' });
     const r = await upload<{ url: string; cloud?: boolean }>(`/students/${studentId}/pet/avatar`, f);
-    toast('头像已更新' + (r.cloud ? '' : '（已保存到本机）'), 'success');
-    // 清空本地失败缓存，让新头像立即渲染
+    // 立即更新本地 detail，头像无需等待重新拉取即可变化；加 cache-bust 强制刷新
+    if (detail.value?.pet && r.url) {
+      const bust = r.url.includes('?') ? '&' : '?';
+      detail.value.pet.avatarPath = r.url + bust + 't=' + Date.now();
+    }
     petAvatarFailed.delete(pet.value?.id ?? '');
+    toast('头像已更新' + (r.cloud ? '' : '（已保存到本机）'), 'success');
     await load();
   } catch (err) {
     toast((err as Error).message || '头像上传失败，请重试', 'error');

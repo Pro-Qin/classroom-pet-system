@@ -34,7 +34,8 @@
 
 - 版本号出现在四处：落地页 hero 的 eyebrow、部署卡片里的安装包文件名、两个页面的页脚。发版时一起改
 - 图标 `assets/icon.png` 从 `installer/app.ico` 的 256×256 帧导出。换图标时重新导出，别手绘
-- 截图放在 `assets/`，全部来自真实运行的产品。更新截图后记得同步 `width` / `height` 属性，避免布局抖动
+- 截图放在 `assets/`，全部来自真实运行的产品，格式是 WebP（从 PNG 转，体积小约 89%，共 332 KB）。换图后记得同步 `width` / `height` 属性，避免布局抖动
+  转换命令：`ffmpeg -i shot.png -c:v libwebp -quality 84 -compression_level 6 shot.webp`
 - 下载链接指向 `https://github.com/Pro-Qin/classroom-pet-system/releases`，不需要随版本改动
 - 教程页的建表脚本链接指向仓库 `main` 分支的 `supabase/schema.sql`，脚本更新后无需改页面
 

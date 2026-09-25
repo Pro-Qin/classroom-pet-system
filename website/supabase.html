@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#080b1e" />
+<title>云端同步配置教程 — 校园宠物乐园</title>
+<meta name="description" content="用 Supabase 让一体机和教师机共用同一份班级数据。全程在浏览器完成，约 10 分钟，不用安装任何软件。" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="云端同步配置教程 — 校园宠物乐园" />
+<meta property="og:description" content="注册 Supabase → 建表 → 拿密钥 → 填进系统 → 验证同步，五步配好多设备共享。" />
+<meta property="og:image" content="assets/icon.png" />
+<link rel="icon" href="assets/icon.png" sizes="any" type="image/png" />
+<link rel="apple-touch-icon" href="assets/icon.png" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-database" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></symbol>
+  <symbol id="i-wifi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/><path d="M5 12.9a10 10 0 0 1 3.5-2.2"/><path d="M15.5 10.7A10 10 0 0 1 19 12.9"/><path d="M2 8.8a15 15 0 0 1 5.2-3.1"/><path d="M16.8 5.7A15 15 0 0 1 22 8.8"/><path d="m2 2 20 20"/></symbol>
+</svg>
+
+<a class="skip" href="#main">跳到主要内容</a>
+
+<header class="nav is-stuck" id="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html">
+      <img src="assets/icon.png" alt="" width="30" height="30" />
+      <span>校园宠物乐园</span>
+    </a>
+    <nav class="nav-links" aria-label="主导航">
+      <a href="index.html#points">积分</a>
+      <a href="index.html#pets">宠物</a>
+      <a href="index.html#honor">荣誉</a>
+      <a href="index.html#safety">数据安全</a>
+      <a href="index.html#deploy">部署</a>
+      <a href="supabase.html" aria-current="page">云端同步</a>
+      <a href="index.html#faq">常见问题</a>
+    </nav>
+    <a class="btn btn-primary btn-sm" href="https://github.com/Pro-Qin/classroom-pet-system/releases" target="_blank" rel="noopener">
+      <svg class="ico" aria-hidden="true"><use href="#i-download"/></svg>下载
+    </a>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="doc-head">
+    <div class="wrap">
+      <p class="eyebrow reveal"><span class="dot-live" aria-hidden="true"></span>教程 · 适用 v0.4.18 及以上</p>
+      <h1 class="reveal" style="--d:60ms; font-size: clamp(2.1rem, 1.5rem + 2.6vw, 3.2rem)">云端同步配置</h1>
+      <p class="lead reveal" style="--d:120ms">让一体机和教师机共用同一份班级数据。全程在浏览器里完成，大约 10 分钟，不用安装任何软件。</p>
+      <ul class="doc-meta reveal" style="--d:180ms">
+        <li><svg class="ico" aria-hidden="true"><use href="#i-clock"/></svg>约 10 分钟</li>
+        <li><svg class="ico" aria-hidden="true"><use href="#i-database"/></svg>Supabase 免费版够用</li>
+        <li><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg>本地始终保留全量数据</li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="wrap doc-layout">
+
+    <aside class="doc-toc" aria-label="本页目录">
+      <p>本页目录</p>
+      <ol>
+        <li><a href="#decide">要不要配</a></li>
+        <li><a href="#flow">六步流程</a></li>
+        <li><a href="#signup">① 注册 Supabase</a></li>
+        <li><a href="#project">② 创建项目</a></li>
+        <li><a href="#schema">③ 执行建表 SQL</a></li>
+        <li><a href="#keys">④ 拿三串密钥</a></li>
+        <li><a href="#fill">⑤ 填进系统</a></li>
+        <li><a href="#verify">⑥ 验证同步</a></li>
+        <li><a href="#trouble">排错对照表</a></li>
+        <li><a href="#safety">数据安全</a></li>
+      </ol>
+    </aside>
+
+    <article class="doc-body">
+
+      <section id="decide">
+        <h2>要不要配</h2>
+        <p>不配也能用。默认的本机模式把数据存在 <code>server/data/pet.db</code>，一台一体机独立运行，断网照常。</p>
+        <p>需要配的情况只有一种：<strong>几台设备要看到同一份数据</strong>——比如教室里的一体机负责加减分，办公室的教师机负责录入和查榜。这时把本地库接到一个 Supabase 项目上，两台机器各自保留全量副本，改动互相推送。</p>
+        <ul class="doc-list">
+          <li>一台机器单独用：不用配，跳过本页</li>
+          <li>多台机器共享数据：按下面六步走一遍，配一次即可</li>
+          <li>只是想把数据搬到新机器：用管理端的「配置中心 → 导出配置 / 导入配置」，不需要 Supabase</li>
+        </ul>
+      </section>
+
+      <section id="flow">
+        <h2>六步流程</h2>
+        <div class="doc-flow">
+          <span>注册 Supabase</span><span class="arrow" aria-hidden="true">→</span>
+          <span>创建项目</span><span class="arrow" aria-hidden="true">→</span>
+          <span>执行建表 SQL</span><span class="arrow" aria-hidden="true">→</span>
+          <span>拿三串密钥</span><span class="arrow" aria-hidden="true">→</span>
+          <span>填进系统</span><span class="arrow" aria-hidden="true">→</span>
+          <span>验证同步</span>
+        </div>
+        <div class="callout warn">
+          <strong>第三步别跳</strong>
+          <p>漏掉建表 SQL，后面所有同步都会报「缺少数据表」。这是唯一一个必须照做、没有捷径的步骤。</p>
+        </div>
+      </section>
+
+      <section id="signup">
+        <h2><span class="doc-step-n">1</span>注册 Supabase</h2>
+        <p>打开 <a href="https://supabase.com" target="_blank" rel="noopener">supabase.com</a>，点 <strong>Start your project</strong> 注册。用 GitHub 账号直接登录最省事。</p>
+        <p>免费版完全够用：500 MB 数据库加 5 GB 流量，一个班的积分流水、宠物和道具记录离这个量级差得很远。</p>
+      </section>
+
+      <section id="project">
+        <h2><span class="doc-step-n">2</span>创建项目</h2>
+        <ol class="doc-list">
+          <li>登录后点 <strong>New project</strong></li>
+          <li><strong>Name</strong> 随便起，例如 <code>pet-classroom</code></li>
+          <li><strong>Database Password</strong> 设一个数据库密码，记下来。以后手动导数据或做维护要用</li>
+          <li><strong>Region</strong> 选 <strong>Southeast Asia (Singapore)</strong>，国内访问延迟最低</li>
+          <li>点 <strong>Create new project</strong>，等 1 到 2 分钟初始化完成</li>
+        </ol>
+      </section>
+
+      <section id="schema">
+        <h2><span class="doc-step-n">3</span>执行建表 SQL</h2>
+        <p>这一步在云端建出和本地一致的表结构。表的列名和类型必须和程序匹配，所以别手写，直接用仓库里的脚本。</p>
+        <ol class="doc-list">
+          <li>在项目左侧菜单点 <strong>SQL Editor</strong>，再点 <strong>New query</strong></li>
+          <li>打开 <a href="https://github.com/Pro-Qin/classroom-pet-system/blob/main/supabase/schema.sql" target="_blank" rel="noopener"><code>supabase/schema.sql</code></a>，全选复制，粘贴进输入框</li>
+          <li>点右下角 <strong>Run</strong>，显示 <code>Success. No rows returned</code> 就是成功了</li>
+          <li>左侧切到 <strong>Table Editor</strong> 刷新，应能看到 <code>students</code>、<code>species</code>、<code>pets</code>、<code>point_events</code>、<code>quick_presets</code>、<code>items</code>、<code>state_rules</code>、<code>backpacks</code>、<code>item_use_logs</code>、<code>app_settings</code> 这十张表</li>
+        </ol>
+        <div class="callout">
+          <strong>脚本是幂等的</strong>
+          <p>用的都是 <code>create table if not exists</code>。重复执行不会删数据，将来版本升级要求补表时，重新跑一遍最新的脚本就行。</p>
+        </div>
+      </section>
+
+      <section id="keys">
+        <h2><span class="doc-step-n">4</span>拿三串密钥</h2>
+        <p>左侧菜单进 <strong>Project Settings</strong>（齿轮图标）→ <strong>API</strong>，把下面三个值抄下来。</p>
+        <table class="doc-table">
+          <thead><tr><th>系统里的字段</th><th>Supabase 页面上的名称</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>Supabase 项目地址</td><td>Project URL</td><td>形如 <code>https://xxxx.supabase.co</code></td></tr>
+            <tr><td>Anon Key</td><td>Project API Keys → anon / publishable</td><td>公开密钥，用于读取</td></tr>
+            <tr><td>Service Role Key</td><td>Project API Keys → service_role</td><td>服务端密钥，用于写入，必须保密</td></tr>
+          </tbody>
+        </table>
+        <div class="callout warn">
+          <strong>新版项目显示的是另一种格式</strong>
+          <p>如果看到 <code>sb_publishable_xxx</code> 和 <code>sb_secret_xxx</code>，同样可用：publishable 填 Anon Key 框，secret 填 Service Role Key 框。</p>
+        </div>
+      </section>
+
+      <section id="fill">
+        <h2><span class="doc-step-n">5</span>填进系统</h2>
+        <p>三种方式，按你的场景挑一种。</p>
+
+        <h3>方式一：欢迎向导（首次安装）</h3>
+        <p>第一次启动程序会进配置向导，第 2 步「云端数据库配置（Supabase）」把三个值分别填进三个输入框。想用本地模式就把它们留空。</p>
+
+        <h3>方式二：管理端（已安装好）</h3>
+        <p>管理系统 → <strong>同步与备份</strong> → <strong>云端连接（Supabase）</strong>，填完保存即可。</p>
+
+        <h3>方式三：配置文件导入（批量部署多台机器）</h3>
+        <p>在已经配好的机器上：管理系统 → <strong>配置中心</strong> → <strong>导出配置</strong>，勾选「云端连接」。把导出的 json 拷到新机器，走欢迎向导或管理端的「导入配置」应用一次。</p>
+        <div class="callout warn">
+          <strong>导出文件里含密钥</strong>
+          <p>云端连接那一项包含 Service Role Key，导出文件里是明文。传的时候走可靠渠道，用完删掉。这个类型默认不勾选，需要手动勾。</p>
+        </div>
+      </section>
+
+      <section id="verify">
+        <h2><span class="doc-step-n">6</span>验证同步</h2>
+        <ol class="doc-list">
+          <li>管理端 → 同步与备份 → 点 <strong>测试连接</strong>，显示「可读可写」才算通。只显示「只读」说明 Service Role Key 没填对</li>
+          <li>随便加一个学生，回概览页看「待推送变更」，几秒内应该归 0</li>
+          <li>在另一台设备打开，能看到同一个学生即成功</li>
+        </ol>
+        <div class="callout ok">
+          <strong>之后不用手动同步</strong>
+          <p>程序会按设定的间隔自动拉取云端增量，每次刷新页面也会拉一次；增删改则实时推送。准备界面里也能手动跑一次「快照 → 拉取 → 推送」。</p>
+        </div>
+      </section>
+
+      <section id="trouble">
+        <h2>排错对照表</h2>
+        <table class="doc-table">
+          <thead><tr><th>现象</th><th>原因与解决</th></tr></thead>
+          <tbody>
+            <tr><td>提示「缺少数据表」</td><td>第 3 步没做或没跑完。回 SQL Editor 重新执行 <code>schema.sql</code></td></tr>
+            <tr><td>测试连接显示「只读」</td><td>缺 Service Role Key。回第 4 步补齐</td></tr>
+            <tr><td>报「云端表缺少列 xxx」</td><td>建表 SQL 是旧版。重新执行最新 <code>schema.sql</code>，幂等，不伤数据</td></tr>
+            <tr><td>头像别的设备看得到、本机 404</td><td>旧头像文件存在本机。重新上传一次即自动上云</td></tr>
+            <tr><td>想换一个 Supabase 项目</td><td>直接改连接配置，系统会自动做一次全量对账</td></tr>
+            <tr><td>两端都改过同一条数据</td><td>不静默覆盖。弹窗会列出双方最后更新时间，选完才推进同步游标</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="safety">
+        <h2>数据安全</h2>
+        <ul class="doc-list">
+          <li><strong>云端只是副本。</strong>所有数据在本地 SQLite 里全量保存，断网照常用，恢复后自动补推</li>
+          <li><strong>同步前自动快照。</strong>生成 <code>server/data/backups/snapshot-*.db</code>，按总字节上限保留，默认 1 GB，至少留最近 2 份</li>
+          <li><strong>删除是软删除。</strong>所有删除写墓碑记录并跨端传播，任何一端都不会硬删</li>
+          <li><strong>冲突不静默覆盖。</strong>没裁决之前同步游标不推进，任一边的数据都留着</li>
+          <li><strong>密钥只存本机。</strong>Service Role Key 只写进 <code>server/data/config.json</code>，不入库、不出现在任何接口返回里</li>
+        </ul>
+      </section>
+
+      <div class="doc-next">
+        <a class="btn btn-primary" href="https://github.com/Pro-Qin/classroom-pet-system/releases" target="_blank" rel="noopener">
+          <svg class="ico" aria-hidden="true"><use href="#i-download"/></svg>下载 Windows 安装版
+        </a>
+        <a class="btn btn-ghost" href="index.html">回到首页<svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+      </div>
+
+    </article>
+  </div>
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-inner">
+    <div class="foot-brand">
+      <img src="assets/icon.png" alt="" width="24" height="24" />
+      <span>校园宠物乐园</span>
+      <span class="foot-ver">v0.4.28</span>
+    </div>
+    <nav class="foot-links" aria-label="页脚导航">
+      <a href="https://github.com/Pro-Qin/classroom-pet-system" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://gitee.com/am-zzq/classroom-pet-system" target="_blank" rel="noopener">Gitee</a>
+      <a href="index.html">官网首页</a>
+      <a href="index.html#faq">常见问题</a>
+    </nav>
+    <p class="foot-made">Made by Qin_zzq</p>
+  </div>
+</footer>
+
+<script src="main.js"></script>
+<script>
+/* 文档页目录高亮：滚到哪一节，左边目录就跟到哪 */
+(function () {
+  var links = Array.prototype.slice.call(document.querySelectorAll('.doc-toc a'));
+  var sections = links.map(function (a) { return document.querySelector(a.getAttribute('href')); }).filter(Boolean);
+  if (!sections.length) return;
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      links.forEach(function (a) { a.classList.toggle('is-active', a.getAttribute('href') === '#' + e.target.id); });
+    });
+  }, { rootMargin: '-88px 0px -70% 0px', threshold: 0 });
+  sections.forEach(function (s) { io.observe(s); });
+})();
+</script>
+</body>
+</html>

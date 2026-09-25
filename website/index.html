@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#080b1e" />
+<title>校园宠物乐园 — 把班级积分养成一只宠物</title>
+<meta name="description" content="校园宠物乐园是集积分管理与宠物养成于一体的班级激励系统。教师加减分，学生养宠物，覆盖学生端、教师端、管理端，装在学校一体机上断网也能跑。" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="校园宠物乐园 — 把班级积分养成一只宠物" />
+<meta property="og:description" content="教师加减分，学生养宠物。学生端、教师端、管理端三合一，装在一体机上，断网也能跑。" />
+<meta property="og:image" content="assets/icon.png" />
+<meta name="twitter:card" content="summary" />
+<link rel="icon" href="assets/icon.png" sizes="any" type="image/png" />
+<link rel="apple-touch-icon" href="assets/icon.png" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-paw" viewBox="0 0 24 24"><circle cx="11" cy="4" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="7.5" cy="15" r="2.2"/><circle cx="14.5" cy="15" r="2.2"/><circle cx="11" cy="19" r="2.2"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24"><path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.6-4.04-1.6-.55-1.4-1.34-1.77-1.34-1.77-1.09-.75.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.39 1.24-3.23-.13-.3-.54-1.53.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.65.25 2.88.12 3.18.77.84 1.24 1.91 1.24 3.23 0 4.63-2.8 5.65-5.48 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12.01 12.01 0 0 0 24 12.5C24 5.87 18.63.5 12 .5Z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-coins" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></symbol>
+  <symbol id="i-trophy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></symbol>
+  <symbol id="i-database" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></symbol>
+  <symbol id="i-package" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></symbol>
+  <symbol id="i-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+</svg>
+
+<a class="skip" href="#main">跳到主要内容</a>
+
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#top">
+      <img src="assets/icon.png" alt="" width="30" height="30" />
+      <span>校园宠物乐园</span>
+    </a>
+    <nav class="nav-links" aria-label="主导航">
+      <a href="#points">积分</a>
+      <a href="#pets">宠物</a>
+      <a href="#honor">荣誉</a>
+      <a href="#safety">数据安全</a>
+      <a href="#deploy">部署</a>
+      <a href="supabase.html">云端同步</a>
+      <a href="#faq">常见问题</a>
+    </nav>
+    <a class="btn btn-primary btn-sm" href="https://github.com/Pro-Qin/classroom-pet-system/releases" target="_blank" rel="noopener">
+      <svg class="ico" aria-hidden="true"><use href="#i-download"/></svg>下载
+    </a>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ============ HERO ============ -->
+  <section class="hero" id="top">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow reveal"><span class="dot-live" aria-hidden="true"></span>班级激励系统 · v0.4.28 · 面向学校一体机</p>
+        <h1 class="reveal" style="--d:60ms">校园宠物乐园</h1>
+        <p class="lead reveal" style="--d:120ms">教师加减分，学生养宠物。分数喂出来的宠物会饿、会困、会闹脾气——比屏幕上多一个数字更容易让人上心。</p>
+        <p class="sub reveal" style="--d:180ms">学生端、教师端、管理端三合一。装在一体机上，断网也能跑。</p>
+        <div class="cta-row reveal" style="--d:240ms">
+          <a class="btn btn-primary" href="https://github.com/Pro-Qin/classroom-pet-system/releases" target="_blank" rel="noopener">
+            <svg class="ico" aria-hidden="true"><use href="#i-download"/></svg>下载 Windows 安装版
+          </a>
+          <a class="btn btn-ghost" href="#pets">先看截图<svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        </div>
+        <ul class="meta-row reveal" style="--d:300ms">
+          <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>免安装包可选</li>
+          <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>不依赖外网</li>
+          <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>数据存在本机</li>
+        </ul>
+      </div>
+
+      <div class="hero-shot reveal" style="--d:200ms">
+        <figure class="frame frame-tall">
+          <div class="frame-bar" aria-hidden="true">
+            <span class="frame-dot"></span><span class="frame-dot"></span><span class="frame-dot"></span>
+            <span class="frame-url">localhost:3000/students</span>
+          </div>
+          <div class="frame-crop">
+            <img src="assets/shot-student.png" width="1384" height="1415" alt="学生端界面：左侧是学生积分卡和宠物，右侧是道具商店和积分流水" />
+          </div>
+        </figure>
+        <div class="float-card" aria-hidden="true">
+          <span class="float-emoji">🦊</span>
+          <div>
+            <p class="float-name">阿狐 · Lv.5 成熟</p>
+            <p class="float-state"><span class="state-dot ok"></span>开心 · 心情 88</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <dl class="facts">
+        <div class="fact reveal"><dt>12 种</dt><dd>宠物，学生自己挑、自己起名</dd></div>
+        <div class="fact reveal" style="--d:70ms"><dt>7 级成长</dt><dd>从蛋到传说，可扩到 15 级</dd></div>
+        <div class="fact reveal" style="--d:140ms"><dt>3 套系统</dt><dd>学生 · 教师 · 管理，一次登录</dd></div>
+        <div class="fact reveal" style="--d:210ms"><dt>0 次硬删</dt><dd>删除只打墓碑，跨端同步</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- ============ 积分 ============ -->
+  <section class="section" id="points">
+    <div class="wrap split split-media-left">
+      <figure class="frame reveal">
+        <div class="frame-bar" aria-hidden="true">
+          <span class="frame-dot"></span><span class="frame-dot"></span><span class="frame-dot"></span>
+          <span class="frame-url">localhost:3000/teacher</span>
+        </div>
+        <img src="assets/shot-teacher.png" width="1392" height="737" loading="lazy" alt="教师端界面：学生卡片多选、加减分面板和快捷理由" />
+      </figure>
+      <div class="copy">
+        <p class="eyebrow reveal">积分</p>
+        <h2 class="reveal" style="--d:60ms">加分不用打字</h2>
+        <p class="reveal" style="--d:110ms">点学生、挑分值、选理由、确认。四步之内完成一次加减分。</p>
+        <ol class="steps reveal" style="--d:160ms">
+          <li><span class="step-n">1</span>点学生卡片，可多选</li>
+          <li><span class="step-n">2</span>按 +5 / −5 调整分值</li>
+          <li><span class="step-n">3</span>填理由，或点一个快捷理由</li>
+          <li><span class="step-n">4</span>确认，写进流水</li>
+        </ol>
+        <ul class="rows reveal" style="--d:210ms">
+          <li><span>理由必填</span><em>每条流水都带理由和操作人，导出 Excel 直接交差</em></li>
+          <li><span>批量操作</span><em>多选学生一次加减分，全班表扬不用点六次</em></li>
+          <li><span>撤销上一步</span><em>点错了当场撤回，流水留痕</em></li>
+          <li><span>快捷理由可改</span><em>分值和文案都在管理端编辑</em></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 宠物 ============ -->
+  <section class="section" id="pets">
+    <div class="wrap split split-media-right">
+      <div class="copy">
+        <p class="eyebrow reveal">宠物</p>
+        <h2 class="reveal" style="--d:60ms">分数看得见</h2>
+        <p class="reveal" style="--d:110ms">宠物有健康、饱食、心情、清洁四条属性，随时间往下掉。掉到哪条线，状态就换一个。</p>
+        <ul class="chips reveal" style="--d:150ms" aria-label="宠物状态">
+          <li class="chip happy">开心</li><li class="chip happy">兴奋</li><li class="chip calm">平静</li>
+          <li class="chip warn">饿了</li><li class="chip warn">犯困</li><li class="chip warn">脏兮兮</li>
+          <li class="chip bad">生气</li><li class="chip bad">伤心</li><li class="chip bad">疲惫</li><li class="chip bad">生病</li>
+        </ul>
+        <p class="reveal" style="--d:190ms">状态规则按属性阈值判定，哪条先满足就用哪条——阈值和顺序都能在管理端改。宠物头顶冒出一句当天的心情，点一下会蹦出表情。</p>
+        <p class="reveal" style="--d:230ms">12 种宠物各自带配色。学生自己挑种类、自己起名、自己传头像，图片自动裁成圆形，也能单独设置头像底色。</p>
+        <ul class="rows reveal" style="--d:270ms">
+          <li><span>商店 12 件道具</span><em>喂食、玩耍、清洁、医疗、加速经验，学生用积分买</em></li>
+          <li><span>背包</span><em>买了可以不立刻用，攒着等属性掉下来再喂</em></li>
+          <li><span>经验结算</span><em>启动时后台按日结算全员经验，等级自己往上走</em></li>
+        </ul>
+      </div>
+      <figure class="frame reveal" style="--d:120ms">
+        <div class="frame-bar" aria-hidden="true">
+          <span class="frame-dot"></span><span class="frame-dot"></span><span class="frame-dot"></span>
+          <span class="frame-url">localhost:3000/students/王一诺</span>
+        </div>
+        <img src="assets/shot-pet.png" width="1392" height="765" loading="lazy" alt="学生端的宠物卡：宠物头像、心情气泡、等级经验条和四条属性，右侧是道具商店与积分流水趋势" />
+      </figure>
+    </div>
+  </section>
+
+  <!-- ============ 荣誉 ============ -->
+  <section class="section band" id="honor">
+    <div class="wrap">
+      <div class="copy copy-center">
+        <p class="eyebrow reveal">荣誉</p>
+        <h2 class="reveal" style="--d:60ms">挂在墙上</h2>
+        <p class="reveal" style="--d:110ms">排行榜前三名上台领奖。大屏模式自动轮播荣誉榜、宠物墙和积分趋势，一体机全天开着不用管。</p>
+      </div>
+      <div class="gallery">
+        <figure class="frame reveal" style="--d:60ms">
+          <img src="assets/shot-rank.png" width="1392" height="737" loading="lazy" alt="教师端排行榜：前三名领奖台，下方是第 4 名以后的榜单" />
+          <figcaption>排行榜 · 领奖台</figcaption>
+        </figure>
+        <figure class="frame reveal" style="--d:140ms">
+          <img src="assets/shot-screen-rank.png" width="1392" height="737" loading="lazy" alt="大屏轮播：班级荣誉榜，滚动展示全班名次" />
+          <figcaption>大屏 · /screen</figcaption>
+        </figure>
+      </div>
+      <figure class="frame reveal wide" style="--d:200ms">
+        <img src="assets/shot-screen-pets.png" width="1392" height="737" loading="lazy" alt="大屏轮播的另一屏：全班宠物墙，每只宠物带名字、主人和当前状态" />
+        <figcaption>大屏轮播 · 全班宠物墙</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ============ 管理 & 数据安全 ============ -->
+  <section class="section" id="safety">
+    <div class="wrap split split-media-right split-wide-copy">
+      <div class="copy">
+        <p class="eyebrow reveal">数据安全</p>
+        <h2 class="reveal" style="--d:60ms">数据不会丢</h2>
+        <p class="reveal" style="--d:110ms">同步是为了多台设备共享，但任何一步都不允许静默覆盖。</p>
+        <dl class="rows rows-2 reveal" style="--d:160ms">
+          <div><dt><svg class="ico" aria-hidden="true"><use href="#i-database"/></svg>同步前自动快照</dt><dd>每次同步先生成 <code>server/data/backups/snapshot-*.db</code>，按总字节上限保留，默认 1 GB，至少留最近 2 份。</dd></div>
+          <div><dt><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg>删除是软删除</dt><dd>所有删除写墓碑记录，跨端传播，任何一端都不会硬删。</dd></div>
+          <div><dt><svg class="ico" aria-hidden="true"><use href="#i-clock"/></svg>冲突交给你裁决</dt><dd>两端都改过就弹窗列出双方最后更新时间，选了才推进同步游标。</dd></div>
+          <div><dt><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg>密钥不出本机</dt><dd>Supabase service role key 只写进 <code>server/data/config.json</code>；管理员密码 bcrypt 哈希；token 签名密钥首次启动随机生成。配置方法见 <a href="supabase.html">云端同步教程</a>。</dd></div>
+        </dl>
+      </div>
+      <figure class="frame reveal" style="--d:120ms">
+        <div class="frame-bar" aria-hidden="true">
+          <span class="frame-dot"></span><span class="frame-dot"></span><span class="frame-dot"></span>
+          <span class="frame-url">localhost:3000/admin</span>
+        </div>
+        <img src="assets/shot-admin.png" width="1392" height="737" loading="lazy" alt="管理端：宠物种类目录，12 种宠物各自带图标与配色" />
+      </figure>
+    </div>
+  </section>
+
+  <!-- ============ 部署 ============ -->
+  <section class="section" id="deploy">
+    <div class="wrap">
+      <div class="copy">
+        <p class="eyebrow reveal">部署</p>
+        <h2 class="reveal" style="--d:60ms">装在一体机上</h2>
+        <p class="reveal" style="--d:110ms">两条路：装安装器，或者直接拷目录。</p>
+      </div>
+
+      <div class="deploy-grid">
+        <article class="deploy-card reveal">
+          <div class="deploy-head">
+            <span class="deploy-icon"><svg class="ico" aria-hidden="true"><use href="#i-package"/></svg></span>
+            <h3>Windows 安装器</h3>
+            <span class="tag tag-primary">推荐</span>
+          </div>
+          <p>下载 <code>ClassroomPetSystem-Setup-0.4.28.exe</code>，双击安装。</p>
+          <ul class="ticks">
+            <li>安装向导里选入口：<code>start.exe</code>（默认，带依赖进度条）或 <code>start.bat</code>，桌面快捷方式跟着选择走</li>
+            <li>装到 <code>%LOCALAPPDATA%\CampusPetParadise</code>，不需要管理员权限</li>
+            <li>升级安装器不会删掉 <code>node_modules</code> 和 <code>server/data</code>，学生数据、密钥、依赖都留着</li>
+          </ul>
+        </article>
+
+        <article class="deploy-card reveal" style="--d:80ms">
+          <div class="deploy-head">
+            <span class="deploy-icon"><svg class="ico" aria-hidden="true"><use href="#i-terminal"/></svg></span>
+            <h3>免安装</h3>
+            <span class="tag">拷走即用</span>
+          </div>
+          <p>开发机构建一次，整个目录拷到一体机。</p>
+          <ul class="ticks">
+            <li>双击 <code>start.bat</code> 或 <code>start.exe</code>，浏览器打开 <code>http://localhost:3000</code></li>
+            <li>同局域网的其他设备访问 <code>http://一体机IP:3000</code></li>
+            <li><code>kiosk.bat</code> 用系统自带的 Edge（WebView2）以应用窗口打开，不用把 Chromium 打进安装包</li>
+          </ul>
+        </article>
+      </div>
+
+      <div class="deploy-bottom">
+        <div class="terminal reveal">
+          <div class="terminal-bar" aria-hidden="true"><svg class="ico"><use href="#i-terminal"/></svg>命令</div>
+<pre><code><span class="c"># 开发</span>
+npm install
+npm run dev      <span class="c"># 前端 http://localhost:5173 → 后端 http://localhost:3000</span>
+
+<span class="c"># 生产</span>
+npm run build
+npm start        <span class="c"># http://localhost:3000</span></code></pre>
+        </div>
+        <ul class="rows reveal" style="--d:80ms">
+          <li><span>端口自动避让</span><em>3000 被占用或被 Windows 留作保留端口时，<code>start.exe</code> 从 3000 起向上探测，把实际端口交给服务再打开正确地址</em></li>
+          <li><span>离线可用</span><em>构建产物不含 CDN 依赖，学校封外网照常用；只有缺依赖或构建产物时才联网走国内 npm 镜像</em></li>
+          <li><span>更新检查</span><em>启动时按 GitHub 镜像 → Gitee → GitHub 顺序探测新版本，探测失败直接降级，不阻塞启动</em></li>
+        </ul>
+      </div>
+
+      <ul class="stack reveal">
+        <li>Vue 3</li><li>Vite</li><li>TypeScript</li><li>Tailwind CSS</li><li>Lucide</li>
+        <li>Node.js 22</li><li>Express</li><li>node:sqlite</li><li>bcrypt</li><li>Supabase</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ FAQ ============ -->
+  <section class="section" id="faq">
+    <div class="wrap wrap-narrow">
+      <div class="copy copy-center">
+        <p class="eyebrow reveal">常见问题</p>
+        <h2 class="reveal" style="--d:60ms">回答几个一定会被问到的</h2>
+      </div>
+      <div class="faq reveal" style="--d:100ms">
+        <details><summary>学生需要密码吗？</summary><p>不需要。在登录页点自己的名字就能进学生端，看到自己的积分、宠物和流水。</p></details>
+        <details><summary>教师口令和管理员密码是什么？</summary><p>教师口令默认 <code>123456</code>，可在教师端修改。管理员密码在首次运行的向导里设置，用 bcrypt 哈希存储，明文不留。</p></details>
+        <details><summary>一定要联网吗？</summary><p>不用。默认本地模式，数据只存在本机 <code>server/data/pet.db</code>。想让多台设备共享同一份数据时才需要配 Supabase，步骤见 <a href="supabase.html">云端同步教程</a>。</p></details>
+        <details><summary>两台设备同时改，谁的数据留下？</summary><p>你决定。同步时发现冲突会列出双方最后更新时间，选完才推进同步游标；没裁决之前两边都不会被覆盖。</p></details>
+        <details><summary>为什么没有每日登录奖励和任务系统？</summary><p>积分只由教师和管理端加减，学生只负责消费。奖励机制留在课堂里，比留在代码里管用。</p></details>
+        <details><summary>有哪些宠物？</summary><p>小火龙、喵星人、汪星人、兔宝宝、小狐狸、大熊猫、小企鹅、智慧猫头鹰、蓝鲸、独角兽、小章鱼、小机械兽。种类、配色和名称都可以在管理端增改。</p></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 结尾 CTA ============ -->
+  <section class="section closing">
+    <div class="wrap wrap-narrow copy-center">
+      <h2 class="reveal">现在就把分数发下去</h2>
+      <p class="reveal" style="--d:60ms">下载安装器，十分钟之内一班人就能开始养宠物。</p>
+      <div class="cta-row center reveal" style="--d:110ms">
+        <a class="btn btn-primary btn-lg" href="https://github.com/Pro-Qin/classroom-pet-system/releases" target="_blank" rel="noopener">
+          <svg class="ico" aria-hidden="true"><use href="#i-download"/></svg>下载 Windows 安装版
+        </a>
+        <a class="btn btn-ghost btn-lg" href="https://gitee.com/am-zzq/classroom-pet-system" target="_blank" rel="noopener">Gitee 仓库</a>
+      </div>
+      <p class="fine reveal" style="--d:160ms">当前版本 v0.4.28 · 安装器在 <a href="https://github.com/Pro-Qin/classroom-pet-system/releases" target="_blank" rel="noopener">GitHub Releases</a> 提供 · 多设备共享数据见<a href="supabase.html">云端同步教程</a></p>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-inner">
+    <div class="foot-brand">
+      <img src="assets/icon.png" alt="" width="24" height="24" />
+      <span>校园宠物乐园</span>
+      <span class="foot-ver">v0.4.28</span>
+    </div>
+    <nav class="foot-links" aria-label="页脚导航">
+      <a href="https://github.com/Pro-Qin/classroom-pet-system" target="_blank" rel="noopener"><svg class="ico" aria-hidden="true"><use href="#i-github"/></svg>GitHub</a>
+      <a href="https://gitee.com/am-zzq/classroom-pet-system" target="_blank" rel="noopener">Gitee</a>
+      <a href="supabase.html">云端同步教程</a>
+      <a href="#faq">常见问题</a>
+    </nav>
+    <p class="foot-made">Made by Qin_zzq</p>
+  </div>
+</footer>
+
+<script src="main.js"></script>
+</body>
+</html>

@@ -691,3 +691,53 @@ h3 { font-size: 1.125rem; letter-spacing: -.01em; }
   .doc-table td:first-child { white-space: normal; }
 }
 
+
+/* ============ 宣传片（定时挂载 B 站播放器） ============ */
+.film-embed {
+  position: relative;
+  width: 100%;
+  max-width: 960px;
+  margin: var(--sp-8) auto 0;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--r-frame);
+  overflow: hidden;
+  background: var(--surface-1);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+.film-embed.is-live { border-color: rgba(99, 102, 241, .5); }
+.film-embed iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+
+.film-soon {
+  position: absolute; inset: 0;
+  display: grid; place-content: center; justify-items: center;
+  gap: var(--sp-3); text-align: center; padding: var(--sp-6);
+  background:
+    radial-gradient(circle at 50% 38%, rgba(99, 102, 241, .22), transparent 62%),
+    radial-gradient(circle at 78% 88%, rgba(217, 70, 239, .14), transparent 60%),
+    var(--surface-1);
+}
+.film-soon::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(circle at 50% 50%, #000 20%, transparent 72%);
+}
+.film-soon-tag {
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .3rem .8rem; border-radius: var(--r-pill);
+  font-size: .8rem; font-weight: 650; letter-spacing: .08em;
+  color: #fde68a; background: rgba(251, 191, 36, .14);
+  border: 1px solid rgba(251, 191, 36, .42);
+}
+.film-soon-clock {
+  margin: 0; font-size: clamp(1.25rem, 3.4vw, 2rem); font-weight: 800;
+  color: var(--text-1); font-variant-numeric: tabular-nums; letter-spacing: -.02em;
+}
+.film-soon-sub { margin: 0; color: var(--text-3); font-size: .95rem; }
+.film-soon .film-count {
+  position: absolute; right: var(--sp-4); bottom: var(--sp-4);
+  font-family: var(--font-mono); font-size: .78rem; color: var(--text-3);
+}
+@media (prefers-reduced-motion: reduce) { .film-soon::after { display: none; } }

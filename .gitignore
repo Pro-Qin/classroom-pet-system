@@ -24,4 +24,11 @@ installer/web_preview.png
 # Reasonix harness 本地配置
 reasonix.toml
 
+# 宣传片管线：脚本与文档进仓库，渲染产物（帧序列 / 成片 / 对照图）不进
+promo/out/
+promo/stills/
+promo/bili/*.png
+promo/bili/*.jpg
+promo/assets/icon-compare.png
+
 Pet2 - Start pursuing the….json

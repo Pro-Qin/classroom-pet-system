@@ -47,6 +47,7 @@
       <a href="#points">积分</a>
       <a href="#pets">宠物</a>
       <a href="#honor">荣誉</a>
+      <a href="#film">宣传片</a>
       <a href="#safety">数据安全</a>
       <a href="#deploy">部署</a>
       <a href="supabase.html">云端同步</a>
@@ -299,6 +300,35 @@ npm start        <span class="c"># http://localhost:3000</span></code></pre>
         <details><summary>为什么没有每日登录奖励和任务系统？</summary><p>积分只由教师和管理端加减，学生只负责消费。奖励机制留在课堂里，比留在代码里管用。</p></details>
         <details><summary>有哪些宠物？</summary><p>小火龙、喵星人、汪星人、兔宝宝、小狐狸、大熊猫、小企鹅、智慧猫头鹰、蓝鲸、独角兽、小章鱼、小机械兽。种类、配色和名称都可以在管理端增改。</p></details>
       </div>
+    </div>
+  </section>
+
+  <!-- ============ 宣传片（定时挂载） ============ -->
+  <section class="section band" id="film">
+    <div class="wrap">
+      <div class="copy copy-center">
+        <p class="eyebrow reveal">产品宣传片</p>
+        <h2 class="reveal" style="--d:60ms">36 秒看完整个产品</h2>
+        <p class="sub reveal" style="--d:110ms">九个功能、九次点击，画面与配乐全部由代码生成，没有一处录屏。</p>
+      </div>
+
+      <!-- 到点自动挂上 B 站播放器：改发布时间只改下面两个属性 -->
+      <div class="film-embed reveal" id="film-embed" style="--d:160ms"
+           data-release-at="2026-10-05T09:00:00+08:00"
+           data-bvid="BV1TEST0000PLACEHOLDER">
+        <div class="film-soon" id="film-soon">
+          <span class="film-soon-tag">定时发布</span>
+          <p class="film-soon-clock" id="film-clock">10 月 5 日 09:00 上线</p>
+          <p class="film-soon-sub">到点这里自动换成 B 站播放器</p>
+        </div>
+        <iframe id="film-frame" hidden frameborder="0" scrolling="no" allowfullscreen
+                sandbox="allow-scripts allow-same-origin allow-popups allow-presentation"
+                title="校园宠物乐园 · 产品宣传片"></iframe>
+      </div>
+
+      <p class="fine reveal" style="--d:200ms;text-align:center">
+        也可在 <a href="https://space.bilibili.com/3493084670534429" target="_blank" rel="noopener">B 站</a> 观看
+      </p>
     </div>
   </section>
 

@@ -42,6 +42,13 @@
         '&page=1&autoplay=0&danmaku=0&high_quality=1&as_wide=1');
       frame.hidden = false;
       if (soon) soon.hidden = true;
+      var lk = document.getElementById('film-link');
+      var la = document.getElementById('film-link-a');
+      if (lk && la) {
+        la.setAttribute('href', 'https://www.bilibili.com/video/' + bvid);
+        lk.hidden = false;
+        lk.classList.add('in');
+      }
       fe.classList.add('is-live');
     };
 
